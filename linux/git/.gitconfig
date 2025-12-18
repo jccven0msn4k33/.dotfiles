@@ -17,6 +17,7 @@
 	sort = -committerdate
 [core]
 	pager = less -r
+	excludesfile = /home/johncyrillcorsanes/.gitignore_global
 [diff]
 	renames = copies
 [filter "lfs"]

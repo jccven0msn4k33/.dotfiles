@@ -9,7 +9,8 @@
 [credential]
 	helper = /mnt/c/Program\\ Files/Git/mingw64/bin/git-credential-manager.exe
 [alias]
-	l = log --pretty=oneline -n 20 --graph --abbrev-commit
+	ls = log --pretty=oneline -n 20 --graph --abbrev-commit
+	lsa = log --pretty=oneline -n 20 --graph --abbrev-commit --show-signature
 	contributors = shortlog --summary --numbered
 	whoami = config user.email
 	identity = !sh -c \"git config user.name \\\"$(git config user.$1.name)\\\" && git config user.email \\\"$(git config user.$1.email)\\\" && git config user.signingkey \\\"$(git config user.$1.signingkey)\\\"\" -

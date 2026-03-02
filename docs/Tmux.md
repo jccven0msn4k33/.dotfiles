@@ -2,7 +2,19 @@
 
 ## Overview
 
-Simple tmux setup with **SteamOS theme** styling and **Gitmux** integration for git status display in the status bar.
+Custom tmux setup with **SteamOS theme** styling, **TPM** (Tmux Plugin Manager), and **Gitmux** integration for git status display in the status bar.
+
+## Plugins
+
+Managed via TPM (`~/.tmux/plugins/tpm`):
+
+- **tmux-sensible** - Sensible defaults
+- **tmux-resurrect** - Session persistence across restarts
+- **tmux-prefix-highlight** - Highlights when prefix is active
+- **tmux-mem-cpu-load** - System resource monitor
+- **tmux-acpi** - Battery/power status
+- **tmux-notify** - Notifications for long-running commands
+- **tmux-autoreload** - Auto-reload config on changes
 
 ## Basic Keys
 
@@ -19,8 +31,9 @@ Simple tmux setup with **SteamOS theme** styling and **Gitmux** integration for 
 
 The status bar displays:
 
-- **Left:** Session name (cyan highlight on dark background)
-- **Right:** Git status (via gitmux) + current time
+- **Left:** Session name (cyan highlight) + mem-cpu-load
+- **Center:** Window list (centered)
+- **Right:** Git status (via gitmux) + Power/Battery (via acpi) + current time
 
 ### Color Scheme
 
@@ -85,3 +98,12 @@ tmux kill-server
 rm ~/.tmux.conf
 # Re-stow or copy from dotfiles
 ```
+
+## Auto-Start Behavior
+
+Tmux auto-start is controlled by `TMUX_DISABLE_AT_BOOT`:
+
+- Set to `0` (enabled) only if both `tmux` and `brew` are installed
+- Set to `1` (disabled) otherwise
+
+Configured in `~/.profile` and `~/.bashrc.d/00-env`.

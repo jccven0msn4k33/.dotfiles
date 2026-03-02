@@ -18,7 +18,13 @@ export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 # Display setup
 export GPG_TTY=$(tty)
 export DISABLE_AUTO_TITLE=1
-export TMUX_DISABLE_AT_BOOT=1
+
+# Enable TMUX at boot only if tmux and brew are installed
+if command -v tmux >/dev/null 2>&1 && command -v brew >/dev/null 2>&1; then
+    export TMUX_DISABLE_AT_BOOT=0
+else
+    export TMUX_DISABLE_AT_BOOT=1
+fi
 
 # DXVK configuration
 export DXVK_CONFIG_FILE="$HOME/.dxvk/dxvk.conf"

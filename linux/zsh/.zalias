@@ -1,1 +1,4 @@
+# Fun stuffs
 alias hackerman="tmuxp load default"
+# Push all remote names into a single repository
+alias gpall="git remote | xargs -I {} git push {}"

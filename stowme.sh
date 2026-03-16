@@ -165,7 +165,7 @@ if ! DOTSTOW_BIN=$(resolve_dotstow); then
 fi
 
 log_positive "Stowing dotfiles for distro: $DETECTED_DISTRO"
-if ! "$DOTSTOW_BIN" stow bash zsh git antigen tmux tmuxp vim vscode dxvk systems python flatpak alacritty wireplumber flags lindbergh supermodel starship; then
+if ! "$DOTSTOW_BIN" stow bash zsh git antigen tmux tmuxp vim vscode dxvk systems python flatpak alacritty wireplumber flags lindbergh supermodel starship opencode; then
   log_error "Error: dotstow stow failed."
   if [ "$DETECTED_DISTRO" = "rhel" ]; then
     export LD_PRELOAD=

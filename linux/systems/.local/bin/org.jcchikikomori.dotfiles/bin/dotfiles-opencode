@@ -1,0 +1,89 @@
+#!/bin/sh
+
+set -eu
+
+# dotfiles-opencode — install opencode AI coding agent
+# https://opencode.ai/docs
+
+_is_installed() {
+    command -v opencode > /dev/null 2>&1
+}
+
+_detect_distro() {
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        echo "${ID:-unknown}"
+    else
+        echo "unknown"
+    fi
+}
+
+do_install() {
+    if _is_installed; then
+        echo "[dotfiles-opencode] opencode is already installed: $(opencode --version 2>/dev/null || true)"
+        return
+    fi
+
+    DISTRO=$(_detect_distro)
+
+    case "$DISTRO" in
+        arch | manjaro)
+            if command -v yay > /dev/null 2>&1; then
+                echo "[dotfiles-opencode] Installing opencode via yay (AUR)..."
+                yay -S --noconfirm opencode-bin
+            else
+                echo "[dotfiles-opencode] yay not found. Installing opencode via install script..."
+                XDG_BIN_DIR="$HOME/.local/bin" curl -fsSL https://opencode.ai/install | bash
+            fi
+            ;;
+        *)
+            echo "[dotfiles-opencode] Installing opencode via install script..."
+            XDG_BIN_DIR="$HOME/.local/bin" curl -fsSL https://opencode.ai/install | bash
+            ;;
+    esac
+
+    echo ""
+    echo "[dotfiles-opencode] Installation complete."
+    echo ""
+    echo "  Next steps:"
+    echo "  1. Run: opencode"
+    echo "  2. Inside opencode, run: /connect"
+    echo "  3. Select 'GitHub Copilot' and follow the device code flow."
+    echo "  4. Run: /models  to pick your preferred model."
+    echo ""
+    echo "  To add MCPs or create agents, run: dotfiles-opencode-wizard"
+    echo ""
+}
+
+do_update() {
+    if ! _is_installed; then
+        echo "[dotfiles-opencode] opencode not installed — run with 'install' first."
+        exit 1
+    fi
+    echo "[dotfiles-opencode] Updating opencode..."
+    DISTRO=$(_detect_distro)
+    case "$DISTRO" in
+        arch | manjaro)
+            if command -v yay > /dev/null 2>&1; then
+                yay -S --noconfirm opencode-bin
+            else
+                XDG_BIN_DIR="$HOME/.local/bin" curl -fsSL https://opencode.ai/install | bash
+            fi
+            ;;
+        *)
+            XDG_BIN_DIR="$HOME/.local/bin" curl -fsSL https://opencode.ai/install | bash
+            ;;
+    esac
+    echo "[dotfiles-opencode] Done: $(opencode --version 2>/dev/null || true)"
+}
+
+case "${1:-}" in
+    install) do_install ;;
+    update)  do_update ;;
+    *)
+        echo "Usage: dotfiles-opencode {install|update}"
+        echo "  install: Install the opencode AI coding agent"
+        echo "  update:  Update opencode to the latest version"
+        exit 1
+        ;;
+esac

@@ -1,0 +1,314 @@
+#!/bin/sh
+
+set -eu
+
+# dotfiles-opencode-wizard — interactive setup for opencode MCPs, agents, and instructions
+# https://opencode.ai/docs
+
+OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+OPENCODE_CONFIG="$OPENCODE_CONFIG_DIR/opencode.jsonc"
+AGENTS_FILE="$OPENCODE_CONFIG_DIR/AGENTS.md"
+AGENTS_DIR="$OPENCODE_CONFIG_DIR/agents"
+
+# ─── JSON helpers ──────────────────────────────────────────────────────────────
+
+_json_tool() {
+    if command -v jq > /dev/null 2>&1; then
+        echo "jq"
+    elif command -v python3 > /dev/null 2>&1; then
+        echo "python3"
+    else
+        echo "none"
+    fi
+}
+
+# Read field from opencode.jsonc (strips single-line // comments before parsing)
+_json_get() {
+    local field="$1"
+    local file="${2:-$OPENCODE_CONFIG}"
+    local tool
+    tool=$(_json_tool)
+    case "$tool" in
+        jq)
+            grep -v '^\s*//' "$file" | jq -r "$field // empty" 2>/dev/null || true
+            ;;
+        python3)
+            grep -v '^\s*//' "$file" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+import functools, operator
+keys = '$field'.lstrip('.').split('.')
+try:
+    val = functools.reduce(operator.getitem, keys, data)
+    print(val if val is not None else '')
+except (KeyError, TypeError):
+    pass
+" 2>/dev/null || true
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+# Write the MCP block into opencode.jsonc
+_mcp_add_jq() {
+    local name="$1" type="$2" entry="$3"
+    local tmp
+    tmp=$(mktemp)
+    grep -v '^\s*//' "$OPENCODE_CONFIG" \
+        | jq --arg name "$name" --argjson entry "$entry" \
+            '.mcp[$name] = $entry' > "$tmp"
+    mv "$tmp" "$OPENCODE_CONFIG"
+}
+
+_mcp_add_python() {
+    local name="$1" entry="$2"
+    local tmp
+    tmp=$(mktemp)
+    grep -v '^\s*//' "$OPENCODE_CONFIG" | python3 -c "
+import sys, json
+name = '$name'
+entry = $entry
+data = json.load(sys.stdin)
+if 'mcp' not in data:
+    data['mcp'] = {}
+data['mcp'][name] = entry
+print(json.dumps(data, indent=2))
+" > "$tmp"
+    mv "$tmp" "$OPENCODE_CONFIG"
+}
+
+_mcp_toggle_jq() {
+    local name="$1" enabled="$2"
+    local tmp
+    tmp=$(mktemp)
+    grep -v '^\s*//' "$OPENCODE_CONFIG" \
+        | jq --arg name "$name" --argjson enabled "$enabled" \
+            '.mcp[$name].enabled = $enabled' > "$tmp"
+    mv "$tmp" "$OPENCODE_CONFIG"
+}
+
+_mcp_toggle_python() {
+    local name="$1" enabled="$2"
+    local tmp
+    tmp=$(mktemp)
+    grep -v '^\s*//' "$OPENCODE_CONFIG" | python3 -c "
+import sys, json
+name = '$name'
+enabled = $enabled
+data = json.load(sys.stdin)
+if 'mcp' in data and name in data['mcp']:
+    data['mcp'][name]['enabled'] = enabled
+print(json.dumps(data, indent=2))
+" > "$tmp"
+    mv "$tmp" "$OPENCODE_CONFIG"
+}
+
+# ─── Config bootstrap ─────────────────────────────────────────────────────────
+
+_ensure_config() {
+    mkdir -p "$OPENCODE_CONFIG_DIR"
+    if [ ! -f "$OPENCODE_CONFIG" ]; then
+        cat > "$OPENCODE_CONFIG" <<'EOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": true,
+  "instructions": ["AGENTS.md"],
+  "mcp": {}
+}
+EOF
+        echo "[wizard] Created minimal config at $OPENCODE_CONFIG"
+    fi
+    if [ ! -f "$AGENTS_FILE" ]; then
+        echo "# Global Agent Instructions" > "$AGENTS_FILE"
+        echo "[wizard] Created $AGENTS_FILE"
+    fi
+    mkdir -p "$AGENTS_DIR"
+}
+
+# ─── Menu actions ─────────────────────────────────────────────────────────────
+
+action_add_mcp() {
+    local tool
+    tool=$(_json_tool)
+    if [ "$tool" = "none" ]; then
+        echo ""
+        echo "[wizard] Neither jq nor python3 found."
+        echo "  Please install jq (recommended) or python3, then try again."
+        echo "  Or edit $OPENCODE_CONFIG manually."
+        return
+    fi
+
+    echo ""
+    printf "MCP type — [l]ocal (command) or [r]emote (URL)? [l/r]: "
+    read mcp_type
+
+    printf "MCP server name (unique key, e.g. my-mcp): "
+    read mcp_name
+
+    case "$mcp_type" in
+        r | R | remote)
+            printf "Remote URL: "
+            read mcp_url
+            printf "Enable immediately? [y/N]: "
+            read mcp_enable
+            enabled="false"
+            [ "$mcp_enable" = "y" ] || [ "$mcp_enable" = "Y" ] && enabled="true"
+            entry="{\"type\":\"remote\",\"url\":\"$mcp_url\",\"enabled\":$enabled}"
+            ;;
+        *)
+            printf "Command (e.g. npx -y @modelcontextprotocol/server-github): "
+            read mcp_cmd
+            # Build JSON array from space-separated tokens
+            cmd_json=$(echo "$mcp_cmd" | python3 -c "
+import sys, json, shlex
+print(json.dumps(shlex.split(sys.stdin.read().strip())))
+" 2>/dev/null || echo "$(echo "$mcp_cmd" | jq -Rc '[split(\" \")[]]')")
+            printf "Environment variable name to pass (blank to skip): "
+            read env_name
+            env_block="{}"
+            if [ -n "$env_name" ]; then
+                env_block="{\"$env_name\":\"{env:$env_name}\"}"
+            fi
+            printf "Enable immediately? [y/N]: "
+            read mcp_enable
+            enabled="false"
+            [ "$mcp_enable" = "y" ] || [ "$mcp_enable" = "Y" ] && enabled="true"
+            entry="{\"type\":\"local\",\"command\":$cmd_json,\"environment\":$env_block,\"enabled\":$enabled}"
+            ;;
+    esac
+
+    case "$tool" in
+        jq)     _mcp_add_jq "$mcp_name" "local" "$entry" ;;
+        python3) _mcp_add_python "$mcp_name" "$entry" ;;
+    esac
+
+    echo "[wizard] MCP '$mcp_name' added to $OPENCODE_CONFIG"
+}
+
+action_toggle_mcp() {
+    local tool
+    tool=$(_json_tool)
+    if [ "$tool" = "none" ]; then
+        echo "[wizard] Neither jq nor python3 found. Edit $OPENCODE_CONFIG manually."
+        return
+    fi
+
+    echo ""
+    echo "Current MCPs:"
+    case "$tool" in
+        jq)
+            grep -v '^\s*//' "$OPENCODE_CONFIG" \
+                | jq -r '.mcp // {} | to_entries[] | "  \(.key)  enabled=\(.value.enabled // true)"' 2>/dev/null || echo "  (none)"
+            ;;
+        python3)
+            grep -v '^\s*//' "$OPENCODE_CONFIG" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for k, v in (data.get('mcp') or {}).items():
+    print(f'  {k}  enabled={v.get(\"enabled\", True)}')
+" 2>/dev/null || echo "  (none)"
+            ;;
+    esac
+
+    printf "MCP name to toggle: "
+    read mcp_name
+    printf "Enable? [y/n]: "
+    read toggle_val
+    enabled="false"
+    [ "$toggle_val" = "y" ] || [ "$toggle_val" = "Y" ] && enabled="true"
+
+    case "$tool" in
+        jq)     _mcp_toggle_jq "$mcp_name" "$enabled" ;;
+        python3) _mcp_toggle_python "$mcp_name" "$enabled" ;;
+    esac
+
+    echo "[wizard] MCP '$mcp_name' enabled=$enabled"
+}
+
+action_create_agent() {
+    echo ""
+    if command -v opencode > /dev/null 2>&1; then
+        echo "[wizard] Launching opencode agent create..."
+        opencode agent create
+    else
+        echo "[wizard] opencode not in PATH — creating agent file manually."
+        printf "Agent name (becomes filename, e.g. code-reviewer): "
+        read agent_name
+        printf "Description (what does this agent do?): "
+        read agent_desc
+        printf "Mode — [p]rimary or [s]ubagent [p/s]: "
+        read agent_mode_raw
+        agent_mode="primary"
+        [ "$agent_mode_raw" = "s" ] || [ "$agent_mode_raw" = "S" ] && agent_mode="subagent"
+        printf "Allow file writes? [Y/n]: "
+        read allow_write
+        write_val="true"
+        [ "$allow_write" = "n" ] || [ "$allow_write" = "N" ] && write_val="false"
+        printf "Allow bash commands? [Y/n]: "
+        read allow_bash
+        bash_val="true"
+        [ "$allow_bash" = "n" ] || [ "$allow_bash" = "N" ] && bash_val="false"
+
+        agent_file="$AGENTS_DIR/${agent_name}.md"
+        cat > "$agent_file" <<EOF
+---
+description: $agent_desc
+mode: $agent_mode
+tools:
+  write: $write_val
+  edit: $write_val
+  bash: $bash_val
+---
+
+You are $agent_name. $agent_desc
+EOF
+        echo "[wizard] Agent created at $agent_file"
+        echo "  Edit it to add custom system prompt instructions."
+    fi
+}
+
+action_edit_instructions() {
+    echo ""
+    EDITOR="${EDITOR:-vi}"
+    echo "[wizard] Opening $AGENTS_FILE in $EDITOR..."
+    $EDITOR "$AGENTS_FILE"
+}
+
+action_view_config() {
+    echo ""
+    echo "=== $OPENCODE_CONFIG ==="
+    cat "$OPENCODE_CONFIG"
+    echo ""
+}
+
+# ─── Main menu ────────────────────────────────────────────────────────────────
+
+_ensure_config
+
+while true; do
+    echo ""
+    echo "===================================="
+    echo "  opencode Wizard"
+    echo "===================================="
+    echo "  1) Add MCP server"
+    echo "  2) Enable / Disable MCP"
+    echo "  3) Create Agent"
+    echo "  4) Edit Instructions (AGENTS.md)"
+    echo "  5) View Config"
+    echo "  q) Quit"
+    echo "===================================="
+    printf "Choice: "
+    read choice
+
+    case "$choice" in
+        1) action_add_mcp ;;
+        2) action_toggle_mcp ;;
+        3) action_create_agent ;;
+        4) action_edit_instructions ;;
+        5) action_view_config ;;
+        q | Q) echo "Bye!"; exit 0 ;;
+        *) echo "Unknown option: $choice" ;;
+    esac
+done

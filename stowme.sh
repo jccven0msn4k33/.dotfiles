@@ -19,6 +19,11 @@ detect_distro() {
     return 0
   fi
 
+  if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+    printf '%s\n' "darwin"
+    return 0
+  fi
+
   if [ -f /etc/os-release ]; then
     # shellcheck disable=SC1091
     . /etc/os-release
@@ -96,6 +101,11 @@ resolve_dotstow() {
     return 0
   fi
 
+  if [ -x "/opt/homebrew/bin/dotstow" ]; then
+    printf '%s\n' "/opt/homebrew/bin/dotstow"
+    return 0
+  fi
+
   return 1
 }
 
@@ -165,7 +175,14 @@ if ! DOTSTOW_BIN=$(resolve_dotstow); then
 fi
 
 log_positive "Stowing dotfiles for distro: $DETECTED_DISTRO"
-if ! "$DOTSTOW_BIN" stow bash zsh git antigen tmux tmuxp vim vscode dxvk systems python flatpak alacritty wireplumber flags lindbergh supermodel starship; then
+# darwin excludes Linux-only packages (dxvk, flatpak, wireplumber, lindbergh)
+# bash package also excluded: macOS default shell is zsh and bash configs reference Linux-specific paths
+if [ "$DETECTED_DISTRO" = "darwin" ]; then
+  STOW_PACKAGES="zsh git antigen tmux tmuxp vim vscode systems python alacritty flags supermodel starship"
+else
+  STOW_PACKAGES="bash zsh git antigen tmux tmuxp vim vscode dxvk systems python flatpak alacritty wireplumber flags lindbergh supermodel starship"
+fi
+if ! "$DOTSTOW_BIN" stow $STOW_PACKAGES; then
   log_error "Error: dotstow stow failed."
   if [ "$DETECTED_DISTRO" = "rhel" ]; then
     export LD_PRELOAD=

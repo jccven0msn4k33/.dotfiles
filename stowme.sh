@@ -158,6 +158,12 @@ if ! sh "$DOTFILES_PATH/linux/systems/.local/bin/org.jcchikikomori.dotfiles/bin/
   exit 1
 fi
 
+if ! sh "$DOTFILES_PATH/linux/systems/.local/bin/org.jcchikikomori.dotfiles/bin/dotfiles-conflicts"; then
+  log_error "Error: conflict helper failed."
+  restore_external_symlinks
+  exit 1
+fi
+
 cd "$HOME" || exit 1
 
 # Fedora/RHEL workaround for stow command path lookup through libgcrypt.

@@ -38,6 +38,9 @@ if [ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]; then
     source "$SDKMAN_DIR/bin/sdkman-init.sh"
 fi
 
+# opencode
+export PATH=$HOME/.opencode/bin:$PATH
+
 # Autoload Python venv if .venv exists
 auto_load_venv() {
     if [ -d "$PWD/.venv" ]; then

@@ -145,6 +145,9 @@ if [ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]; then
     source "$SDKMAN_DIR/bin/sdkman-init.sh"
 fi
 
+# opencode
+export PATH=$HOME/.opencode/bin:$PATH
+
 # Start TMUX if not already running
 if [ -z "$TMUX" ] && [ -z "$TMUX_DISABLE_AT_BOOT" ]; then
     tmux attach || tmux new

@@ -80,10 +80,12 @@ do_update() {
 case "${1:-}" in
     install) do_install ;;
     update)  do_update ;;
+    wizard)  dotfiles-opencode-wizard ;;
     *)
-        echo "Usage: dotfiles-opencode {install|update}"
+        echo "Usage: dotfiles-opencode {install|update|wizard}"
         echo "  install: Install the opencode AI coding agent"
         echo "  update:  Update opencode to the latest version"
+        echo "  wizard:  Launch the opencode setup wizard"
         exit 1
         ;;
 esac

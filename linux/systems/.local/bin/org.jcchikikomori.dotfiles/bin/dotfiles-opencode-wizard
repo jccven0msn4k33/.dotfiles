@@ -51,6 +51,25 @@ except (KeyError, TypeError):
     esac
 }
 
+_json_escape() {
+    local tool="$1"
+    local value="$2"
+    case "$tool" in
+        jq)
+            printf '%s' "$value" | jq -Rr @json
+            ;;
+        python3)
+            printf '%s' "$value" | python3 -c "
+import sys, json
+print(json.dumps(sys.stdin.read()))
+"
+            ;;
+        *)
+            printf '"%s"' "$value"
+            ;;
+    esac
+}
+
 # Write the MCP block into opencode.jsonc
 _mcp_add_jq() {
     local name="$1" type="$2" entry="$3"
@@ -105,6 +124,78 @@ print(json.dumps(data, indent=2))
     mv "$tmp" "$OPENCODE_CONFIG"
 }
 
+_mcp_cleanup_invalid_jq() {
+    local tmp before after removed
+    before=$(grep -v '^\s*//' "$OPENCODE_CONFIG" | jq -r '(.mcp // {} | length)' 2>/dev/null || echo "0")
+    tmp=$(mktemp)
+    grep -v '^\s*//' "$OPENCODE_CONFIG" \
+        | jq '.mcp = ((.mcp // {}) | with_entries(select((.value | type) == "object" and (.value | has("type")) and (.value | has("command")))))' > "$tmp"
+    mv "$tmp" "$OPENCODE_CONFIG"
+    after=$(grep -v '^\s*//' "$OPENCODE_CONFIG" | jq -r '(.mcp // {} | length)' 2>/dev/null || echo "0")
+    removed=$((before - after))
+    if [ "$removed" -gt 0 ]; then
+        echo "[wizard] Removed $removed invalid MCP(s) (missing type/command)."
+    fi
+}
+
+_mcp_cleanup_invalid_python() {
+    local tmp removed
+    tmp=$(mktemp)
+    removed=$(grep -v '^\s*//' "$OPENCODE_CONFIG" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+mcp = data.get('mcp') or {}
+clean = {}
+for k, v in mcp.items():
+    if isinstance(v, dict) and 'type' in v and 'command' in v:
+        clean[k] = v
+data['mcp'] = clean
+print(json.dumps(data, indent=2))
+print(len(mcp) - len(clean), file=sys.stderr)
+" 2>"$tmp.removed" > "$tmp")
+    mv "$tmp" "$OPENCODE_CONFIG"
+    removed=$(cat "$tmp.removed" 2>/dev/null || echo "0")
+    rm -f "$tmp.removed"
+    if [ "${removed:-0}" -gt 0 ]; then
+        echo "[wizard] Removed $removed invalid MCP(s) (missing type/command)."
+    fi
+}
+
+_mcp_cleanup_invalid() {
+    local tool="$1"
+    case "$tool" in
+        jq) _mcp_cleanup_invalid_jq ;;
+        python3) _mcp_cleanup_invalid_python ;;
+    esac
+}
+
+_mcp_is_manageable_jq() {
+    local name="$1"
+    grep -v '^\s*//' "$OPENCODE_CONFIG" \
+        | jq -e --arg name "$name" '.mcp[$name] | (type == "object" and has("type") and has("command"))' > /dev/null 2>&1
+}
+
+_mcp_is_manageable_python() {
+    local name="$1"
+    grep -v '^\s*//' "$OPENCODE_CONFIG" | python3 -c "
+import sys, json
+name = '$name'
+data = json.load(sys.stdin)
+entry = (data.get('mcp') or {}).get(name)
+ok = isinstance(entry, dict) and 'type' in entry and 'command' in entry
+raise SystemExit(0 if ok else 1)
+" > /dev/null 2>&1
+}
+
+_mcp_is_manageable() {
+    local tool="$1" name="$2"
+    case "$tool" in
+        jq) _mcp_is_manageable_jq "$name" ;;
+        python3) _mcp_is_manageable_python "$name" ;;
+        *) return 1 ;;
+    esac
+}
+
 # ─── Config bootstrap ─────────────────────────────────────────────────────────
 
 _ensure_config() {
@@ -155,7 +246,9 @@ action_add_mcp() {
             read mcp_enable
             enabled="false"
             [ "$mcp_enable" = "y" ] || [ "$mcp_enable" = "Y" ] && enabled="true"
-            entry="{\"type\":\"remote\",\"url\":\"$mcp_url\",\"enabled\":$enabled}"
+            mcp_url_json=$(_json_escape "$tool" "$mcp_url")
+            # Keep a command key so MCP validation/management requirements are satisfied.
+            entry="{\"type\":\"remote\",\"url\":$mcp_url_json,\"command\":[],\"enabled\":$enabled}"
             ;;
         *)
             printf "Command (e.g. npx -y @modelcontextprotocol/server-github): "
@@ -169,7 +262,16 @@ print(json.dumps(shlex.split(sys.stdin.read().strip())))
             read env_name
             env_block="{}"
             if [ -n "$env_name" ]; then
-                env_block="{\"$env_name\":\"{env:$env_name}\"}"
+                env_value=$(printenv "$env_name" 2>/dev/null || true)
+                if [ -z "$env_value" ]; then
+                    while [ -z "$env_value" ]; do
+                        printf "Value for %s: " "$env_name"
+                        read env_value
+                    done
+                fi
+                env_name_json=$(_json_escape "$tool" "$env_name")
+                env_value_json=$(_json_escape "$tool" "$env_value")
+                env_block="{$env_name_json:$env_value_json}"
             fi
             printf "Enable immediately? [y/N]: "
             read mcp_enable
@@ -195,6 +297,8 @@ action_toggle_mcp() {
         return
     fi
 
+    _mcp_cleanup_invalid "$tool"
+
     echo ""
     echo "Current MCPs:"
     case "$tool" in
@@ -214,6 +318,11 @@ for k, v in (data.get('mcp') or {}).items():
 
     printf "MCP name to toggle: "
     read mcp_name
+    if ! _mcp_is_manageable "$tool" "$mcp_name"; then
+        echo "[wizard] MCP '$mcp_name' is not manageable or missing required keys (type/command)."
+        echo "  Add/fix it first in $OPENCODE_CONFIG."
+        return
+    fi
     printf "Enable? [y/n]: "
     read toggle_val
     enabled="false"
@@ -283,9 +392,37 @@ action_view_config() {
     echo ""
 }
 
+action_edit_config() {
+    echo ""
+    default_editor="${EDITOR:-vi}"
+    echo "Choose how to open config:"
+    echo "  1) Use \$EDITOR ($default_editor)"
+    echo "  2) Enter editor command manually"
+    printf "Choice [1/2]: "
+    read editor_choice
+
+    editor_cmd="$default_editor"
+    if [ "$editor_choice" = "2" ]; then
+        printf "Editor command (e.g. nvim, code -w): "
+        read editor_cmd
+        if [ -z "$editor_cmd" ]; then
+            echo "[wizard] Empty editor command. Aborting."
+            return
+        fi
+    fi
+
+    echo "[wizard] Opening $OPENCODE_CONFIG in $editor_cmd..."
+    # shellcheck disable=SC2086
+    $editor_cmd "$OPENCODE_CONFIG"
+}
+
 # ─── Main menu ────────────────────────────────────────────────────────────────
 
 _ensure_config
+tool=$(_json_tool)
+if [ "$tool" != "none" ]; then
+    _mcp_cleanup_invalid "$tool"
+fi
 
 while true; do
     echo ""
@@ -297,6 +434,7 @@ while true; do
     echo "  3) Create Agent"
     echo "  4) Edit Instructions (AGENTS.md)"
     echo "  5) View Config"
+    echo "  6) Edit Config"
     echo "  q) Quit"
     echo "===================================="
     printf "Choice: "
@@ -308,6 +446,7 @@ while true; do
         3) action_create_agent ;;
         4) action_edit_instructions ;;
         5) action_view_config ;;
+        6) action_edit_config ;;
         q | Q) echo "Bye!"; exit 0 ;;
         *) echo "Unknown option: $choice" ;;
     esac

@@ -1,4 +1,15 @@
 {
     "editor.fontLigatures": false,
-    "sonarlint.focusOnNewCode": false
+    "sonarlint.focusOnNewCode": false,
+    "chat.mcp.serverSampling": {
+        "MCP Audit Provider: Framelink Figma (tapped)": {
+            "allowedModels": [
+                "copilot/auto",
+                "copilotcli/claude-sonnet-4.6",
+                "copilot/claude-haiku-4.5",
+                "copilot/claude-opus-4.5",
+                "copilot/claude-opus-4.6"
+            ]
+        }
+    }
 }

@@ -53,6 +53,49 @@ fi
 
 This makes the tokens available as environment variables, which opencode reads via `{env:VARIABLE_NAME}` syntax in `opencode.jsonc`.
 
+## Per-Project Configuration
+
+You can override the global config for a specific project by placing an `opencode.jsonc` in the project root or inside a `.opencode/` directory:
+
+```
+your-project/
+├── opencode.jsonc          # project-level config (option A)
+└── .opencode/
+    └── opencode.jsonc      # project-level config (option B)
+```
+
+Opencode merges configs in this order (last wins):
+
+1. `~/.config/opencode/opencode.jsonc` — global (this dotfile)
+2. `<project-root>/opencode.jsonc` or `<project-root>/.opencode/opencode.jsonc` — project-level
+
+### Minimal project config example
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md"         // project-specific agent instructions
+  ],
+  "mcp": {
+    "sonarqube-mcp": {
+      "enabled": true   // enable only for this project
+    }
+  }
+}
+```
+
+### Committing project configs
+
+- **Do commit** `opencode.jsonc` / `.opencode/opencode.jsonc` — it's safe (no secrets).
+- **Never commit** `.env` files — tokens go in `~/.config/opencode/.env` or a local `.opencode/.env` that is gitignored.
+
+Add this to your project's `.gitignore`:
+
+```
+.opencode/.env
+```
+
 ## Security Notes
 
 - `.env` is gitignored via `**/.config/**/.env` pattern

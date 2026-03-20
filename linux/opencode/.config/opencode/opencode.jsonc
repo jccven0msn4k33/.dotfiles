@@ -27,6 +27,14 @@
       "url": "https://mcp.context7.com/mcp",
       "enabled": true
     },
+    "web-forager": {
+      "type": "local",
+      "command": [
+        "web-forager",
+        "serve"
+      ],
+      "enabled": true
+    },
     "github": {
       "type": "local",
       "command": [

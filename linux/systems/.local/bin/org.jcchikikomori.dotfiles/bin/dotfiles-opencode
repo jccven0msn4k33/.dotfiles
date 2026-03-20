@@ -83,149 +83,12 @@ _env_file_get() {
     grep -m1 "^${key}=" "$envfile" 2>/dev/null | cut -d= -f2- || echo ""
 }
 
-# ─── MCP dependency installer ─────────────────────────────────────────────────
-
-do_install_mcps() {
-    echo ""
-    echo "[dotfiles-opencode] Installing MCP dependencies..."
-
-    # Guard: Termux not supported for pipx MCPs
-    if _is_termux; then
-        echo "[dotfiles-opencode] Termux detected — skipping MCP dependency install."
-        echo "  Install MCP packages manually with: pip install <package>"
-        return
-    fi
-
-    # Guard: config must exist
-    if [ ! -f "$OPENCODE_CONFIG" ]; then
-        echo "[dotfiles-opencode] Config not found at $OPENCODE_CONFIG"
-        echo "  Run stowme.sh first to symlink the opencode config."
-        return 1
-    fi
-
-    # Guard: need a JSON tool
-    local tool
-    tool=$(_json_tool)
-    if [ "$tool" = "none" ]; then
-        echo "[dotfiles-opencode] Neither jq nor python3 found — cannot parse opencode.jsonc."
-        echo "  Install jq (recommended) or python3, then re-run."
-        return 1
-    fi
-
-    # Guard: pipx required for local binary MCPs
-    if ! command -v pipx > /dev/null 2>&1; then
-        echo "[dotfiles-opencode] pipx not found."
-        echo "  Install it with:  pip install --user pipx  or  brew install pipx"
-        echo "  Then re-run:  dotfiles-opencode install-mcps"
-        return 1
-    fi
-
-    echo ""
-    echo "  Parsing $OPENCODE_CONFIG ..."
-    echo ""
-
-    # Counters
-    installed=0
-    skipped=0
-    already=0
-    notice=0
-
-    # Collect all MCPs that need ENV reporting (done after install phase)
-    env_report=""
-
-    # Parse and process each MCP
-    _parse_mcps "$OPENCODE_CONFIG" | while IFS= read -r line; do
-        [ -z "$line" ] && continue
-
-        # Extract fields
-        mcp_name=$(echo "$line" | sed 's/.*name=\([^ ]*\).*/\1/')
-        mcp_type=$(echo "$line" | sed 's/.*type=\([^ ]*\).*/\1/')
-        mcp_cmd0=$(echo "$line" | sed 's/.*cmd0=\([^ ]*\).*/\1/')
-        mcp_cmd1=$(echo "$line" | sed 's/.*cmd1=\([^ ]*\).*/\1/')
-        mcp_env=$(echo "$line" | sed 's/.*env=\([^ ]*\).*/\1/')
-
-        # ── Classify & act ──────────────────────────────────────────────────
-
-        # remote MCP — no binary needed
-        if [ "$mcp_type" = "remote" ]; then
-            echo "  [skip]    $mcp_name  (remote URL — no install needed)"
-            continue
-        fi
-
-        # No command at all — skip
-        if [ -z "$mcp_cmd0" ]; then
-            echo "  [skip]    $mcp_name  (no command defined)"
-            continue
-        fi
-
-        # npx-based — auto-fetches at runtime, skip install but note npx dependency
-        if [ "$mcp_cmd0" = "npx" ]; then
-            if command -v npx > /dev/null 2>&1; then
-                echo "  [npx]     $mcp_name  (auto-fetched via npx — OK)"
-            else
-                echo "  [warn]    $mcp_name  needs npx — install Node.js/npm first"
-            fi
-            _report_env "$mcp_name" "$mcp_env"
-            continue
-        fi
-
-        # uvx-based — auto-fetches at runtime
-        if [ "$mcp_cmd0" = "uvx" ]; then
-            if command -v uvx > /dev/null 2>&1; then
-                echo "  [uvx]     $mcp_name  (auto-fetched via uvx — OK)"
-            else
-                echo "  [warn]    $mcp_name  needs uvx — install uv first"
-            fi
-            _report_env "$mcp_name" "$mcp_env"
-            continue
-        fi
-
-        # docker-based — can't install the image here, just notice
-        if [ "$mcp_cmd0" = "docker" ]; then
-            if command -v docker > /dev/null 2>&1; then
-                echo "  [docker]  $mcp_name  (Docker image — pull manually if needed)"
-                echo "            Command: docker $mcp_cmd1 ..."
-            else
-                echo "  [warn]    $mcp_name  needs Docker — install Docker first"
-            fi
-            _report_env "$mcp_name" "$mcp_env"
-            continue
-        fi
-
-        # pipx candidate — binary must be on PATH
-        if command -v "$mcp_cmd0" > /dev/null 2>&1; then
-            echo "  [ok]      $mcp_name  ($mcp_cmd0 already in PATH)"
-            _report_env "$mcp_name" "$mcp_env"
-            continue
-        fi
-
-        # Not found — install via pipx using the binary name as the package name
-        echo "  [pipx]    $mcp_name  installing '$mcp_cmd0' via pipx..."
-        if pipx install "$mcp_cmd0" 2>&1 | sed 's/^/              /'; then
-            echo "  [done]    $mcp_name  installed OK"
-        else
-            echo "  [fail]    $mcp_name  pipx install '$mcp_cmd0' failed"
-            echo "            If the package name differs from the binary, install manually:"
-            echo "            pipx install <correct-package-name>"
-        fi
-        _report_env "$mcp_name" "$mcp_env"
-
-    done
-
-    echo ""
-    echo "[dotfiles-opencode] MCP dependency check complete."
-    echo ""
-    echo "  Next steps:"
-    echo "  1. Fill in missing ENV values in $OPENCODE_ENV"
-    echo "  2. Enable desired MCPs in $OPENCODE_CONFIG"
-    echo "     or run: dotfiles-opencode-wizard → Enable / Disable MCP"
-    echo ""
-}
+# ─── MCP helpers ──────────────────────────────────────────────────────────────
 
 # Print ENV key status for an MCP (reads from .env file)
 _report_env() {
-    local mcp_name="$1"
-    local env_keys="$2"
+    mcp_name="$1"
+    env_keys="$2"
     [ -z "$env_keys" ] && return
 
     echo "            ENV for $mcp_name:"
@@ -249,6 +112,209 @@ _report_env() {
         IFS=","
     done
     IFS="$old_ifs"
+}
+
+# ─── MCP install: classify and act on a single parsed line ───────────────────
+
+# Process one MCP line (from _parse_mcps output) and install/report as needed.
+# Usage: _process_mcp_line "<line>"
+# Prints label lines to stdout. Returns 0 always.
+_process_mcp_line() {
+    line="$1"
+    [ -z "$line" ] && return 0
+
+    # Extract fields
+    mcp_name=$(echo "$line" | sed 's/.*name=\([^ ]*\).*/\1/')
+    mcp_type=$(echo "$line" | sed 's/.*type=\([^ ]*\).*/\1/')
+    mcp_cmd0=$(echo "$line" | sed 's/.*cmd0=\([^ ]*\).*/\1/')
+    mcp_cmd1=$(echo "$line" | sed 's/.*cmd1=\([^ ]*\).*/\1/')
+    mcp_env=$(echo "$line" | sed 's/.*env=\([^ ]*\).*/\1/')
+
+    # remote MCP — no binary needed
+    if [ "$mcp_type" = "remote" ]; then
+        echo "  [skip]    $mcp_name  (remote URL — no install needed)"
+        return 0
+    fi
+
+    # No command at all — skip
+    if [ -z "$mcp_cmd0" ]; then
+        echo "  [skip]    $mcp_name  (no command defined)"
+        return 0
+    fi
+
+    # npx-based — auto-fetches at runtime
+    if [ "$mcp_cmd0" = "npx" ]; then
+        if command -v npx > /dev/null 2>&1; then
+            echo "  [npx]     $mcp_name  (auto-fetched via npx — OK)"
+        else
+            echo "  [warn]    $mcp_name  needs npx — install Node.js/npm first"
+        fi
+        _report_env "$mcp_name" "$mcp_env"
+        return 0
+    fi
+
+    # uvx-based — auto-fetches at runtime
+    if [ "$mcp_cmd0" = "uvx" ]; then
+        if command -v uvx > /dev/null 2>&1; then
+            echo "  [uvx]     $mcp_name  (auto-fetched via uvx — OK)"
+        else
+            echo "  [warn]    $mcp_name  needs uvx — install uv first"
+        fi
+        _report_env "$mcp_name" "$mcp_env"
+        return 0
+    fi
+
+    # docker-based — can't install the image here, just notice
+    if [ "$mcp_cmd0" = "docker" ]; then
+        if command -v docker > /dev/null 2>&1; then
+            echo "  [docker]  $mcp_name  (Docker image — pull manually if needed)"
+            echo "            Command: docker $mcp_cmd1 ..."
+        else
+            echo "  [warn]    $mcp_name  needs Docker — install Docker first"
+        fi
+        _report_env "$mcp_name" "$mcp_env"
+        return 0
+    fi
+
+    # pipx candidate — binary must be on PATH
+    if command -v "$mcp_cmd0" > /dev/null 2>&1; then
+        echo "  [ok]      $mcp_name  ($mcp_cmd0 already in PATH)"
+        _report_env "$mcp_name" "$mcp_env"
+        return 0
+    fi
+
+    # Not found — install via pipx using the binary name as the package name
+    echo "  [pipx]    $mcp_name  installing '$mcp_cmd0' via pipx..."
+    if pipx install "$mcp_cmd0" 2>&1 | sed 's/^/              /'; then
+        echo "  [done]    $mcp_name  installed OK"
+    else
+        echo "  [fail]    $mcp_name  pipx install '$mcp_cmd0' failed"
+        echo "            If the package name differs from the binary, install manually:"
+        echo "            pipx install <correct-package-name>"
+    fi
+    _report_env "$mcp_name" "$mcp_env"
+}
+
+# ─── MCP dependency installer ─────────────────────────────────────────────────
+
+do_install_mcps() {
+    echo ""
+    echo "[dotfiles-opencode] Installing MCP dependencies..."
+
+    # Guard: Termux not supported for pipx MCPs
+    if _is_termux; then
+        echo "[dotfiles-opencode] Termux detected — skipping MCP dependency install."
+        echo "  Install MCP packages manually with: pip install <package>"
+        return
+    fi
+
+    # Guard: config must exist
+    if [ ! -f "$OPENCODE_CONFIG" ]; then
+        echo "[dotfiles-opencode] Config not found at $OPENCODE_CONFIG"
+        echo "  Run stowme.sh first to symlink the opencode config."
+        return 1
+    fi
+
+    # Guard: need a JSON tool
+    tool=$(_json_tool)
+    if [ "$tool" = "none" ]; then
+        echo "[dotfiles-opencode] Neither jq nor python3 found — cannot parse opencode.jsonc."
+        echo "  Install jq (recommended) or python3, then re-run."
+        return 1
+    fi
+
+    # Guard: pipx required for local binary MCPs
+    if ! command -v pipx > /dev/null 2>&1; then
+        echo "[dotfiles-opencode] pipx not found."
+        echo "  Install it with:  pip install --user pipx  or  brew install pipx"
+        echo "  Then re-run:  dotfiles-opencode install-mcps"
+        return 1
+    fi
+
+    echo ""
+    echo "  Parsing $OPENCODE_CONFIG ..."
+    echo ""
+
+    # Cache global parse output to a temp file so we can:
+    #   (a) iterate without a pipeline subshell, and
+    #   (b) re-use for project-config lookups below.
+    global_parse_tmp=$(mktemp)
+    _parse_mcps "$OPENCODE_CONFIG" > "$global_parse_tmp"
+
+    # ── Phase 1: global config ──────────────────────────────────────────────
+
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        _process_mcp_line "$line"
+    done < "$global_parse_tmp"
+
+    # ── Phase 2: project config ─────────────────────────────────────────────
+
+    project_config="$PWD/.opencode/opencode.jsonc"
+
+    if [ -f "$project_config" ]; then
+        echo ""
+        echo "  Scanning project config: $project_config ..."
+        echo ""
+
+        project_parse_tmp=$(mktemp)
+        _parse_mcps "$project_config" > "$project_parse_tmp"
+
+        while IFS= read -r pline; do
+            [ -z "$pline" ] && continue
+
+            # Extract fields from project MCP entry
+            p_name=$(echo "$pline" | sed 's/.*name=\([^ ]*\).*/\1/')
+            p_cmd0=$(echo "$pline" | sed 's/.*cmd0=\([^ ]*\).*/\1/')
+            p_env=$(echo "$pline" | sed 's/.*env=\([^ ]*\).*/\1/')
+
+            # If cmd0 is empty, look up in global config by name
+            resolved_line="$pline"
+            resolved_cmd0="$p_cmd0"
+            resolved_env="$p_env"
+            if [ -z "$p_cmd0" ]; then
+                global_line=$(grep "^name=${p_name} " "$global_parse_tmp" || true)
+                if [ -z "$global_line" ]; then
+                    echo "  [skip]    $p_name  (no command — define in global config)"
+                    continue
+                fi
+                resolved_line="$global_line"
+                resolved_cmd0=$(echo "$global_line" | sed 's/.*cmd0=\([^ ]*\).*/\1/')
+                # Merge env: prefer global env if project env is empty
+                if [ -z "$resolved_env" ]; then
+                    resolved_env=$(echo "$global_line" | sed 's/.*env=\([^ ]*\).*/\1/')
+                fi
+                # Rebuild the line with the merged env so _process_mcp_line sees it
+                resolved_line=$(echo "$resolved_line" | sed "s/ env=[^ ]*/ env=${resolved_env}/")
+            fi
+
+            # Check if this cmd0 is already covered by the global phase
+            global_has=$(grep " cmd0=${resolved_cmd0} " "$global_parse_tmp" || true)
+            if [ -n "$global_has" ]; then
+                echo "  [ok]      $p_name  (covered by global config)"
+                # Still report env so missing keys are surfaced
+                _report_env "$p_name" "$resolved_env"
+                continue
+            fi
+
+            # Truly project-unique MCP — process like global phase
+            _process_mcp_line "$resolved_line"
+
+        done < "$project_parse_tmp"
+
+        rm -f "$project_parse_tmp"
+    fi
+
+    rm -f "$global_parse_tmp"
+
+    echo ""
+    echo "[dotfiles-opencode] MCP dependency check complete."
+    echo ""
+    echo "  Next steps:"
+    echo "  1. Fill in missing ENV values in $OPENCODE_ENV"
+    echo "  2. Enable desired MCPs in $OPENCODE_CONFIG"
+    echo "     or run: dotfiles-opencode-wizard → Enable / Disable MCP"
+    echo ""
 }
 
 # ─── opencode installer ───────────────────────────────────────────────────────

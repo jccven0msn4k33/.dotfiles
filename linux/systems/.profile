@@ -145,6 +145,15 @@ if [ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ]; then
     source "$SDKMAN_DIR/bin/sdkman-init.sh"
 fi
 
+# opencode
+export PATH=$HOME/.opencode/bin:$PATH
+# Opencode MCP environment (local-only, gitignored)
+if [ -f "$HOME/.config/opencode/.env" ]; then
+    set -a  # Auto-export all variables
+    . "$HOME/.config/opencode/.env"
+    set +a
+fi
+
 # Start TMUX if not already running
 if [ -z "$TMUX" ] && [ -z "$TMUX_DISABLE_AT_BOOT" ]; then
     tmux attach || tmux new

@@ -7,6 +7,40 @@ Based from existing [repository](https://github.com/sreerajkksd/dotfiles). Forke
 
 - [Git Cheatsheet](docs/GitCheatsheet.md)
 
+## OpenCode Integration
+
+This project includes an **OpenCode agent system** for automated maintenance and management.
+
+### Orchestrator
+
+The orchestrator is the primary interface for this dotfiles repository. It:
+- Classifies user requests and routes them appropriately
+- Answers architectural/conventional questions directly
+- Delegates maintenance tasks to the maintainer subagent
+
+### Maintainer (`dotfiles-maintainer`)
+
+The maintainer handles all cross-platform maintenance work:
+- **Propagates changes** across distro families (Debian, Ubuntu, Arch, SteamOS, RHEL, Termux, macOS)
+- **ARM compatibility checks** (Raspberry Pi, Apple Silicon, mobile devices)
+- **Detects stow conflicts** and pre-cleanup validation
+- **Refactors shell scripts** with POSIX compliance
+- **Validates** `setup.sh` and `stowme.sh` changes
+- **GitHub issue triage** — severity, affected distros, fixes
+
+### Usage
+
+| Command Type | Who Handles It |
+|---|---|
+| "How does X work?" / "Where is Y?" | **Orchestrator** |
+| "Add / fix / change something" | **Maintainer** |
+| "Run stowme.sh" / "Re-stow packages" | **Maintainer** |
+| "Check GitHub issues" | **Maintainer** |
+| "Pre-stow conflict check" | **Maintainer** |
+
+> [!TIP]
+> For detailed agent instructions, workflows, and MCP server configuration, see the [`.opencode/README.md`](.opencode/README.md) file.
+
 ## Features
 
 - Personalized features.

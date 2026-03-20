@@ -1,7 +1,32 @@
 ---
 description: "Dotfiles maintenance agent. Use when: making cross-platform changes, ARM compatibility, propagating changes across distro families (debian/ubuntu, arch/steamos, rhel/fedora), detecting stow conflicts, refactoring shell scripts, validating setup.sh or stowme.sh changes, pre-cleanup conflict checking, reading GitHub issues, triaging issues, suggesting fixes for reported bugs."
-tools: [read, search, edit, execute, agent, todo]
-argument-hint: "Describe the change or file to validate (e.g., 'add ARM support to dotfiles-python', 'propagate zsh config change to all distros')"
+mode: subagent
+permission:
+  edit: allow
+  bash:
+    "*": allow
+    "git commit*": ask
+    "git push*": ask
+    "git pull*": ask
+    "git fetch*": allow
+    "git checkout*": ask
+    "git switch*": ask
+    "git merge*": ask
+    "git rebase*": ask
+    "git reset*": ask
+    "git stash*": ask
+    "git cherry-pick*": ask
+    "git branch -d*": ask
+    "git branch -D*": ask
+    "git tag*": ask
+    "git clean*": ask
+    "gh issue comment*": ask
+    "gh issue edit*": ask
+    "gh issue close*": deny
+    "gh issue reopen*": deny
+    "gh pr create*": deny
+    "gh pr merge*": deny
+  webfetch: allow
 ---
 
 # Dotfiles Maintainer

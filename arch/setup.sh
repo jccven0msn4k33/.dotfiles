@@ -89,7 +89,7 @@ pacman_install "-S --noconfirm --noprogressbar" aur/phpenv-git
 
 # Workarounds & Misc software
 pacman_install "-S --noconfirm --noprogressbar" aur/pam_ssh_agent_auth
-pacman_install "-S --noconfirm --noprogressbar" xsel ncdu
+pacman_install "-S --noconfirm --noprogressbar" xclip xsel ncdu
 # Install mirror management tools
 pacman_install "-S --noconfirm --noprogressbar" rankmirrors reflector
 

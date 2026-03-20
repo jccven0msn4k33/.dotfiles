@@ -12,7 +12,7 @@ sudo apt-get install -y stow vim nano htop iftop mtr dkms lz4 git zsh build-esse
 # Installing essentials (additional)
 # NOTES:
 # - vim-gtk3 = gvim
-sudo apt-get install -y python3 zip vi openssh xsel ncdu wget vim-gtk3
+sudo apt-get install -y python3 zip vi openssh xclip xsel ncdu wget vim-gtk3
 
 # Installing additional packages (for building others such as pyenv)
 sudo apt-get install -y libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev

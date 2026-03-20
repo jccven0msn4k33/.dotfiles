@@ -3,6 +3,10 @@
 A collection of configuration files and scripts to streamline setting up your favorite terminal shell across various systems.
 Based from existing [repository](https://github.com/sreerajkksd/dotfiles). Forked then put optimizations & adjustments to sustain my needs, and lessen the friction on configuring, every time i'm doing the setup on my fresh installed Linux hardware.
 
+## Quick Links
+
+- [Git Cheatsheet](docs/GitCheatsheet.md)
+
 ## Features
 
 - Personalized features.
@@ -26,6 +30,7 @@ Based from existing [repository](https://github.com/sreerajkksd/dotfiles). Forke
 ## Supported Platforms
 
 - Windows Subsystem for Linux (WSL version 2)
+- macOS (Intel + Apple Silicon)
 - Ubuntu/Debian-based distributions
 - Arch Linux and its derivatives (e.g., Garuda, Manjaro, SteamOS)
 - Immutable Linux distributions (e.g., Bazzite, SteamOS, etc.)
@@ -95,6 +100,19 @@ Then follow any additional prompts during the setup process.
 Execute `stowme.sh` to finally symlink the files properly.
 Then reboot your machine, and let the magic happen!
 
+### Docker Compose Smoke Test
+
+You can run a reusable Debian smoke test target that follows the CI stowing path:
+
+```bash
+docker compose run --rm dotfiles-ci-debian
+```
+
+This target installs minimal dependencies, installs `dotstow`, and runs `debian/stowme.sh` inside a clean `debian:bookworm-slim` container.
+
+> [!IMPORTANT]
+> macOS cannot be reliably tested via Docker images on Linux hosts. Use GitHub Actions `macos-latest` runners for macOS validation.
+
 ## Post-Setup
 
 After running the setup, the dotfiles-post-setup script will handle additional configurations, including:
@@ -112,6 +130,8 @@ This repository includes a CI workflow; For example: Ubuntu, located in `.github
 Initializes essential dependencies.
 Executes the `start.sh` script.
 Adds a user and simulates stowing dotfiles.
+
+For macOS, the CI should run directly on GitHub-hosted macOS runners instead of Docker containers.
 
 ## Workarounds
 

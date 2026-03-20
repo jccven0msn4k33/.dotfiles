@@ -6,12 +6,12 @@
 
 ## Phase 1: Dotfiles Package Structure
 
-1. Create `linux/opencode/.config/opencode/opencode.jsonc`
+1. Create `opencode/.config/opencode/opencode.jsonc`
    - GitHub Copilot as provider (left for user to `/connect` post-install)
    - MCPs: `context7` (enabled), `github` (disabled by default, uses `{env:GITHUB_PERSONAL_ACCESS_TOKEN}`)
    - `"instructions": ["AGENTS.md"]` to load the global rules file
 
-2. Create `linux/opencode/.config/opencode/AGENTS.md`
+2. Create `opencode/.config/opencode/AGENTS.md`
    - Starter global conventions/rules file
 
 3. _Note:_ `agents/` and `commands/` dirs are **not stowed** — they're real dirs managed dynamically by the wizard
@@ -58,8 +58,8 @@
 
 **New files to create:**
 
-- `linux/opencode/.config/opencode/opencode.jsonc`
-- `linux/opencode/.config/opencode/AGENTS.md`
+- `opencode/.config/opencode/opencode.jsonc`
+- `opencode/.config/opencode/AGENTS.md`
 - `linux/systems/.local/bin/org.jcchikikomori.dotfiles/bin/dotfiles-opencode`
 - `linux/systems/.local/bin/org.jcchikikomori.dotfiles/bin/dotfiles-opencode-wizard`
 

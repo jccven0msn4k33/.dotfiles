@@ -416,6 +416,149 @@ action_edit_config() {
     $editor_cmd "$OPENCODE_CONFIG"
 }
 
+action_edit_env() {
+    echo ""
+    ENV_FILE="$OPENCODE_CONFIG_DIR/.env"
+    ENV_EXAMPLE="$OPENCODE_CONFIG_DIR/.env.example"
+
+    if [ ! -f "$ENV_FILE" ]; then
+        if [ -f "$ENV_EXAMPLE" ]; then
+            echo "[wizard] .env does not exist. Creating from .env.example..."
+            cp "$ENV_EXAMPLE" "$ENV_FILE"
+        else
+            echo "[wizard] Creating blank .env file..."
+            touch "$ENV_FILE"
+        fi
+    fi
+
+    default_editor="${EDITOR:-vi}"
+    echo "[wizard] Opening $ENV_FILE in $default_editor..."
+    echo "  (Contains MCP tokens - GITHUB_PERSONAL_ACCESS_TOKEN, etc.)"
+    $default_editor "$ENV_FILE"
+}
+
+action_init_project_config() {
+    echo ""
+    PROJECT_CONFIG_DIR="$PWD/.opencode"
+    PROJECT_CONFIG="$PROJECT_CONFIG_DIR/opencode.jsonc"
+
+    if [ -f "$PROJECT_CONFIG" ]; then
+        echo "[wizard] Project config already exists: $PROJECT_CONFIG"
+        printf "Overwrite? [y/N]: "
+        read overwrite
+        if [ "$overwrite" != "y" ] && [ "$overwrite" != "Y" ]; then
+            return
+        fi
+    fi
+
+    mkdir -p "$PROJECT_CONFIG_DIR"
+    cat > "$PROJECT_CONFIG" <<'EOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [],
+  "mcp": {}
+}
+EOF
+    echo "[wizard] Created project config: $PROJECT_CONFIG"
+    echo "  Add project-specific MCPs with option 9."
+    echo "  This config extends your global ~/.config/opencode/opencode.jsonc"
+}
+
+action_add_project_mcp() {
+    echo ""
+    PROJECT_CONFIG_DIR="$PWD/.opencode"
+    PROJECT_CONFIG="$PROJECT_CONFIG_DIR/opencode.jsonc"
+
+    if [ ! -f "$PROJECT_CONFIG" ]; then
+        echo "[wizard] No project config found at $PROJECT_CONFIG"
+        printf "Create it now? [Y/n]: "
+        read create_now
+        if [ "$create_now" = "n" ] || [ "$create_now" = "N" ]; then
+            return
+        fi
+        action_init_project_config
+    fi
+
+    local tool
+    tool=$(_json_tool)
+    if [ "$tool" = "none" ]; then
+        echo "[wizard] Neither jq nor python3 found. Edit $PROJECT_CONFIG manually."
+        return
+    fi
+
+    printf "MCP type — [l]ocal (command) or [r]emote (URL)? [l/r]: "
+    read mcp_type
+
+    printf "MCP server name (unique key, e.g. my-project-mcp): "
+    read mcp_name
+
+    case "$mcp_type" in
+        r | R | remote)
+            printf "Remote URL: "
+            read mcp_url
+            printf "Enable immediately? [y/N]: "
+            read mcp_enable
+            enabled="false"
+            [ "$mcp_enable" = "y" ] || [ "$mcp_enable" = "Y" ] && enabled="true"
+            mcp_url_json=$(_json_escape "$tool" "$mcp_url")
+            entry="{\"type\":\"remote\",\"url\":$mcp_url_json,\"command\":[],\"enabled\":$enabled}"
+            ;;
+        *)
+            printf "Command (e.g. npx -y @modelcontextprotocol/server-github): "
+            read mcp_cmd
+            cmd_json=$(echo "$mcp_cmd" | python3 -c "
+import sys, json, shlex
+print(json.dumps(shlex.split(sys.stdin.read().strip())))
+" 2>/dev/null || echo "$(echo "$mcp_cmd" | jq -Rc '[split(\" \")[]]')")
+            printf "Environment variable name to pass (blank to skip): "
+            read env_name
+            env_block="{}"
+            if [ -n "$env_name" ]; then
+                env_value=$(printenv "$env_name" 2>/dev/null || true)
+                if [ -z "$env_value" ]; then
+                    printf "Value for %s (or use {env:%s} for runtime lookup): " "$env_name" "$env_name"
+                    read env_value
+                    [ -z "$env_value" ] && env_value="{env:$env_name}"
+                fi
+                env_name_json=$(_json_escape "$tool" "$env_name")
+                env_value_json=$(_json_escape "$tool" "$env_value")
+                env_block="{$env_name_json:$env_value_json}"
+            fi
+            printf "Enable immediately? [y/N]: "
+            read mcp_enable
+            enabled="false"
+            [ "$mcp_enable" = "y" ] || [ "$mcp_enable" = "Y" ] && enabled="true"
+            entry="{\"type\":\"local\",\"command\":$cmd_json,\"environment\":$env_block,\"enabled\":$enabled}"
+            ;;
+    esac
+
+    # Add to project config instead of global
+    local tmp
+    tmp=$(mktemp)
+    case "$tool" in
+        jq)
+            grep -v '^\s*//' "$PROJECT_CONFIG" \
+                | jq --arg name "$mcp_name" --argjson entry "$entry" \
+                    '.mcp[$name] = $entry' > "$tmp"
+            ;;
+        python3)
+            grep -v '^\s*//' "$PROJECT_CONFIG" | python3 -c "
+import sys, json
+name = '$mcp_name'
+entry = $entry
+data = json.load(sys.stdin)
+if 'mcp' not in data:
+    data['mcp'] = {}
+data['mcp'][name] = entry
+print(json.dumps(data, indent=2))
+" > "$tmp"
+            ;;
+    esac
+    mv "$tmp" "$PROJECT_CONFIG"
+
+    echo "[wizard] MCP '$mcp_name' added to project config: $PROJECT_CONFIG"
+}
+
 # ─── Main menu ────────────────────────────────────────────────────────────────
 
 _ensure_config
@@ -425,6 +568,8 @@ if [ "$tool" != "none" ]; then
 fi
 
 while true; do
+    clear
+
     echo ""
     echo "===================================="
     echo "  opencode Wizard"
@@ -435,6 +580,10 @@ while true; do
     echo "  4) Edit Instructions (AGENTS.md)"
     echo "  5) View Config"
     echo "  6) Edit Config"
+    echo "  7) Edit Environment (.env)"
+    echo "  ────────────────────────────────"
+    echo "  8) Init Project Config (.opencode/)"
+    echo "  9) Add Project MCP"
     echo "  q) Quit"
     echo "===================================="
     printf "Choice: "
@@ -447,6 +596,9 @@ while true; do
         4) action_edit_instructions ;;
         5) action_view_config ;;
         6) action_edit_config ;;
+        7) action_edit_env ;;
+        8) action_init_project_config ;;
+        9) action_add_project_mcp ;;
         q | Q) echo "Bye!"; exit 0 ;;
         *) echo "Unknown option: $choice" ;;
     esac

@@ -105,6 +105,19 @@ do
   fi
 done
 
+echo '[dotfiles-conflicts] Checking stow target conflicts (opencode)'
+
+for target in \
+  "$HOME/.config/opencode" \
+  "$HOME/.config/opencode/opencode.jsonc" \
+  "$HOME/.config/opencode/AGENTS.md" \
+  "$HOME/.config/opencode/.env.example"
+do
+  if ! status_line "$target"; then
+    BLOCKING=1
+  fi
+done
+
 if [ "$BLOCKING" -eq 1 ]; then
   echo '[dotfiles-conflicts] Blocking conflicts found.'
   echo '[dotfiles-conflicts] Recommended: backup/remove conflicting targets, then run stow again.'

@@ -204,4 +204,12 @@ fi
 # Restore symlinks that were temporarily removed for stow compatibility.
 restore_external_symlinks
 
+# Remind user about EmuDeck sync setup if emudecktools package was stowed.
+if [ "$DETECTED_DISTRO" != "darwin" ] && [ "$DETECTED_DISTRO" != "termux" ]; then
+  printf '\n'
+  printf 'Note: If you stowed the emudecktools package,\n'
+  printf 'run the following to setup automatic syncing with systemd timer:\n'
+  printf '  dotfiles-emudeck\n'
+fi
+
 exit 0

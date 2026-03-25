@@ -9,6 +9,7 @@
   ],
   "plugin": [
     "envsitter-guard@latest",
+    "oh-my-opencode-slim",
     "opencode-agent-skills",
     "opencode-mem",
     "opencode-redactor@0.1.1"

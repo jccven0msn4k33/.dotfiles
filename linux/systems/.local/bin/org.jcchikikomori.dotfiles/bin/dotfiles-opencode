@@ -358,13 +358,7 @@ do_install() {
     do_install_mcps
 
     # ── Install OpenAgentsControl ───────────────────────────────────────────────
-    echo ""
-    echo "  Installing OpenAgentsControl (OAC)..."
-    if curl -fsSL https://raw.githubusercontent.com/darrenhinde/OpenAgentsControl/main/install.sh | bash -s developer 2>&1 | sed 's/^/        /'; then
-        echo "        [done] OpenAgentsControl installed OK"
-    else
-        echo "        [warn] OpenAgentsControl install may have failed or is already installed"
-    fi
+    do_install_oac
 
     echo ""
     echo "  Next steps:"
@@ -374,9 +368,6 @@ do_install() {
     echo "  4. Run: /models  to pick your preferred model."
     echo ""
     echo "  To add MCPs or create agents, run: dotfiles-opencode-wizard"
-    echo ""
-    echo "  OpenAgentsControl is installed — start with:"
-    echo "    opencode --agent OpenAgent"
     echo ""
 }
 
@@ -402,16 +393,32 @@ do_update() {
     echo "[dotfiles-opencode] Done: $(opencode --version 2>/dev/null || true)"
 }
 
+# ─── OpenAgentsControl installer ───────────────────────────────────────────────
+
+do_install_oac() {
+    echo ""
+    echo "[dotfiles-opencode] Installing OpenAgentsControl (OAC)..."
+    if curl -fsSL https://raw.githubusercontent.com/darrenhinde/OpenAgentsControl/main/install.sh | bash -s developer 2>&1 | sed 's/^/        /'; then
+        echo "        [done] OpenAgentsControl installed OK"
+        echo ""
+        echo "  Start with: opencode --agent OpenAgent"
+    else
+        echo "        [warn] OpenAgentsControl install may have failed or is already installed"
+    fi
+}
+
 case "${1:-}" in
     install)       do_install ;;
     update)        do_update ;;
     install-mcps)  do_install_mcps ;;
+    install-oac)   do_install_oac ;;
     wizard)        dotfiles-opencode-wizard ;;
     *)
-        echo "Usage: dotfiles-opencode {install|update|install-mcps|wizard}"
+        echo "Usage: dotfiles-opencode {install|update|install-mcps|install-oac|wizard}"
         echo "  install:       Install opencode and all MCP dependencies"
         echo "  update:        Update opencode to the latest version"
         echo "  install-mcps:  Install/check MCP dependencies only (re-run anytime)"
+        echo "  install-oac:  Install OpenAgentsControl (OAC) separately"
         echo "  wizard:        Launch the opencode setup wizard"
         exit 1
         ;;

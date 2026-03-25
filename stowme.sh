@@ -210,6 +210,10 @@ if [ "$DETECTED_DISTRO" != "darwin" ] && [ "$DETECTED_DISTRO" != "termux" ]; the
   printf 'Note: If you stowed the emudecktools package,\n'
   printf 'run the following to setup automatic syncing with systemd timer:\n'
   printf '  dotfiles-emudeck\n'
+  printf '\n'
+  printf 'Note: If you use opencode AI coding agent,\n'
+  printf 'run the following to install OpenAgentsControl:\n'
+  printf '  dotfiles-opencode install-oac\n'
 fi
 
 exit 0

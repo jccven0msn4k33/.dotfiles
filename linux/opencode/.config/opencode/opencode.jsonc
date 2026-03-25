@@ -4,28 +4,32 @@
   "model": "anthropic/claude-sonnet-4-5",
   "small_model": "anthropic/claude-haiku-4-5",
   "instructions": [
-    "AGENTS.md"
+    "AGENTS.md",
+    "GIT_COMMIT_GUARD.md"
   ],
   "plugin": [
-    "oh-my-opencode",
-    "opencode-redactor@0.1.1",
-    "opencode-disable-zen"
+    "envsitter-guard@latest",
+    "oh-my-opencode-slim",
+    "opencode-agent-skills",
+    "opencode-mem",
+    "opencode-redactor@0.1.1"
   ],
   "default_agent": "obama",
   "permission": {
     "skill": {
-      "*": "allow"
+      "*": "allow",
+      "git": "allow"
     },
     "bash": {
       "git commit *": "deny",
-      "git push *": "deny",
       "git commit": "deny",
+      "git push *": "deny",
       "git push": "deny",
+      "git reset --hard *": "deny",
+      "git revert *": "ask",
       "rm -rf *": "ask",
+      "sudo *": "ask",
       "*": "allow"
-    },
-    "read": {
-      "~/.dotfiles/linux/vscode/.config/Code/User/prompts/**": "allow"
     }
   },
   "provider": {
@@ -36,6 +40,11 @@
       "type": "remote",
       "url": "https://mcp.context7.com/mcp",
       "enabled": true
+    },
+    "buildkite-mcp": {
+      "type": "remote",
+      "url": "https://mcp.buildkite.com/mcp",
+      "enabled": false
     },
     "web-forager": {
       "type": "local",
@@ -52,6 +61,8 @@
         "run",
         "-i",
         "--rm",
+        "-e",
+        "GITHUB_PERSONAL_ACCESS_TOKEN",
         "dhi.io/github-mcp"
       ],
       "enabled": false,

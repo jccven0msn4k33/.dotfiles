@@ -7,7 +7,7 @@ description: Ruby coding standards following RuboCop, guard clauses, TDD with RS
 
 ## Style & Conventions
 
-- Follow the **RuboCop Ruby Style Guide**: https://github.com/rubocop-hq/ruby-style-guide
+- Follow the **RuboCop Ruby Style Guide**: https://github.com/rubocop/ruby-style-guide
 - Always follow the repository's existing **RuboCop config** — run `bundle exec rubocop` before finalizing changes.
 - 2-space indentation.
 - Single quotes for strings; double quotes only when interpolation or special chars are needed.
@@ -108,6 +108,13 @@ end
   end
   ```
 
+- When `docker-compose.yml` or `compose.yml` exists, run tests and lint in Docker by default:
+
+  ```bash
+  docker compose run --rm -e RUBYOPT='-W0' <service> bundle exec rubocop <file>
+  docker compose run --rm -e RUBYOPT='-W0' <service> bundle exec rspec <spec_path>
+  ```
+
 ## Security (OWASP Top 10)
 
 - Validate all user input; use Strong Parameters.
@@ -125,7 +132,11 @@ end
 
 ## Code Quality
 
-- Run `bundle exec rubocop --autocorrect <file>` to fix auto-correctable offenses first.
+- Run RuboCop in Docker by default when Compose is available:
+
+  ```bash
+  docker compose run --rm -e RUBYOPT='-W0' <service> bundle exec rubocop <file> --autocorrect
+  ```
 - Watch for common code smells: Long Method (>20 lines), Feature Envy, Primitive Obsession, `case` without `else`.
 - `case` statements must have an `else` clause with an explicit error or default handler.
 

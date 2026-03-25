@@ -26,6 +26,8 @@ description: Ruby on Rails development for both legacy (4.x-6.x) and modern (7.x
 
 ## Docker Commands (Default Dev Environment)
 
+When `docker-compose.yml` or `compose.yml` exists, Docker is the default runtime for linting, tests, and Rails commands.
+
 ```bash
 # Run any command
 docker compose run --rm -e RUBYOPT='-W0' <container_name> <command>
@@ -66,6 +68,17 @@ docker compose run --rm -e RUBYOPT='-W0' <container_name> bundle exec rubocop <f
 - `before_filter` instead of `before_action`.
 
 ## Testing (RSpec)
+
+### RSpec Execution Mode (Docker)
+
+Choose sync vs. async based on test scope when running inside Docker:
+
+| Scope | Mode | Example |
+|---|---|---|
+| Full app or broad suite (`spec/`, `spec/models/`, `spec/controllers/`, etc.) | **Background / async** | `docker compose run --rm -e RUBYOPT='-W0' <service> bundle exec rspec spec/` |
+| Single file or focused component | **Synchronous** | `docker compose run --rm -e RUBYOPT='-W0' <service> bundle exec rspec spec/models/user_spec.rb` |
+
+**Decision rule:** No path or multi-directory path → background/async. Single file or single tightly-scoped directory → synchronous.
 
 - Prioritize TDD; if not feasible, add tests immediately after implementation.
 - All specs require `rails_helper`.

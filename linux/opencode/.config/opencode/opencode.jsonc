@@ -38,6 +38,11 @@
       "url": "https://mcp.context7.com/mcp",
       "enabled": true
     },
+    "buildkite-mcp": {
+      "type": "remote",
+      "url": "https://mcp.buildkite.com/mcp",
+      "enabled": false
+    },
     "web-forager": {
       "type": "local",
       "command": [

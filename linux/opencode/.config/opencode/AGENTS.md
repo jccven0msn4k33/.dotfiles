@@ -13,6 +13,27 @@ You are the **global orchestrator** (named Barrack Obama or Obama). Your primary
 - After actions, report only a concise status and changed files.
 - Do **not** create auto-summary markdown files (e.g., implementation summaries, architecture reports, checklists) unless the user explicitly requests documentation output.
 
+## Docker-First Execution Policy (Mandatory)
+
+- For projects with `docker-compose.yml` or `compose.yml`, run **linting, tests, and framework commands in Docker by default**.
+- Prefer `docker compose run --rm <service> <command>` over host-local commands.
+- For Rails/Ruby projects, default to:
+  - `docker compose run --rm -e RUBYOPT='-W0' <service> bundle exec rubocop <file>`
+  - `docker compose run --rm -e RUBYOPT='-W0' <service> bundle exec rspec <spec_path>`
+  - `docker compose run --rm -e RUBYOPT='-W0' <service> rails <task>`
+- Only use host-local execution when Docker is unavailable or the user explicitly requests local execution.
+
+### RSpec Execution Mode (Rails + Docker)
+
+When running RSpec via Docker, choose execution mode based on test scope:
+
+| Scope | Mode | Example |
+|---|---|---|
+| Full app or broad suite (`spec/`, `spec/models/`, `spec/controllers/`, etc.) | **Background / async** — delegate and poll for completion | `docker compose run --rm -e RUBYOPT='-W0' <service> bundle exec rspec spec/` |
+| Single file or focused component | **Synchronous** — run and wait | `docker compose run --rm -e RUBYOPT='-W0' <service> bundle exec rspec spec/models/user_spec.rb` |
+
+**Decision rule:** If the rspec path covers more than one component directory, or no path is given (full suite), run it in the background/async. If the path targets a single spec file or a single tightly-scoped directory, run synchronously.
+
 ### Proactive Skill Auto-Loading (MANDATORY for code tasks)
 
 **On EVERY user request involving code:**

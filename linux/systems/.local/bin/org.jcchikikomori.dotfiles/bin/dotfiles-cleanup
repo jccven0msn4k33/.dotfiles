@@ -128,6 +128,7 @@ fi
 # Clean up opencode symlinks & stale files before restow
 rm -f "$HOME/.config/opencode/opencode.jsonc"
 rm -f "$HOME/.config/opencode/oh-my-opencode.json"
+rm -f "$HOME/.config/opencode/opencode-mem.json"
 rm -f "$HOME/.config/opencode/package.json"
 rm -f "$HOME/.config/opencode/bun.lock"
 rm -f "$HOME/.config/opencode/tui.json"

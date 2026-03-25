@@ -157,6 +157,11 @@ Add this to your project's `.gitignore`:
 .opencode/.env
 ```
 
+## How to avoid burning the tokens
+
+- Take control of your own configuration
+- Prevent using unecessary plugins such as `oh-my-opencode`
+
 ## Security Notes
 
 - `.env` is gitignored via `**/.config/**/.env` pattern

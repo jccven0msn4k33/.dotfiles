@@ -357,6 +357,15 @@ do_install() {
     # Option B: always chain into MCP dependency install
     do_install_mcps
 
+    # ── Install OpenAgentsControl ───────────────────────────────────────────────
+    echo ""
+    echo "  Installing OpenAgentsControl (OAC)..."
+    if curl -fsSL https://raw.githubusercontent.com/darrenhinde/OpenAgentsControl/main/install.sh | bash -s developer 2>&1 | sed 's/^/        /'; then
+        echo "        [done] OpenAgentsControl installed OK"
+    else
+        echo "        [warn] OpenAgentsControl install may have failed or is already installed"
+    fi
+
     echo ""
     echo "  Next steps:"
     echo "  1. Run: opencode"
@@ -365,6 +374,9 @@ do_install() {
     echo "  4. Run: /models  to pick your preferred model."
     echo ""
     echo "  To add MCPs or create agents, run: dotfiles-opencode-wizard"
+    echo ""
+    echo "  OpenAgentsControl is installed — start with:"
+    echo "    opencode --agent OpenAgent"
     echo ""
 }
 

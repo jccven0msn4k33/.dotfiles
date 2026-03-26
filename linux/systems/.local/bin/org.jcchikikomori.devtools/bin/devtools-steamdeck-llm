@@ -2,7 +2,7 @@
 #
 # devtools-steamdeck-llm — Local LLM setup for Steam Deck using Ollama with ROCM support
 #
-# Usage: devtools-steamdeck-llm {install|uninstall|start|stop|status|models|pull|thermal|recommend|logs|verify-gpu}
+# Usage: devtools-steamdeck-llm {install|uninstall|start|stop|status|models|pull|thermal|recommend|logs|verify-gpu|opencode-config}
 #
 # Commands:
 #   install {container|native}  Install Ollama (container or native mode)
@@ -16,6 +16,7 @@
 #   recommend                   Show model recommendations for Steam Deck
 #   logs                        Show recent Ollama logs
 #   verify-gpu                  Check if GPU acceleration is working
+#   opencode-config [model]     Configure opencode to use Ollama (default: phi3)
 #
 # Steam Deck Configuration:
 #   - Uses user-mode systemd service (no root required for runtime)
@@ -470,6 +471,29 @@ cmd_uninstall() {
         systemctl --user daemon-reload
     fi
     
+    # Remove packages installed via yay/pacman (native mode)
+    if ! check_is_container_mode; then
+        # Check if Ollama was installed via package manager
+        local pkg_installed=false
+        if command -v pacman >/dev/null 2>&1; then
+            if pacman -Qq ollama-rocm >/dev/null 2>&1 || pacman -Qq ollama >/dev/null 2>&1; then
+                pkg_installed=true
+            fi
+        fi
+        
+        if [ "$pkg_installed" = true ]; then
+            log_info "Removing Ollama packages..."
+            if command -v yay >/dev/null 2>&1; then
+                log_info "Using yay to remove packages..."
+                yay -R --noconfirm ollama-rocm ollama 2>/dev/null || true
+            elif command -v pacman >/dev/null 2>&1; then
+                log_info "Using pacman to remove packages..."
+                sudo pacman -R --noconfirm ollama-rocm ollama 2>/dev/null || true
+            fi
+            log_info "Packages removed"
+        fi
+    fi
+    
     if [ -x "$OLLAMA_BIN" ]; then
         rm -f "$OLLAMA_BIN"
     fi
@@ -779,6 +803,215 @@ cmd_logs() {
     fi
 }
 
+# ── opencode configuration ───────────────────────────────────────────────────
+cmd_opencode_config() {
+    local model="${1:-phi3}"
+    local config_file="${HOME}/.config/opencode/opencode.jsonc"
+    local backup_file="${config_file}.backup.$(date +%Y%m%d_%H%M%S)"
+    local container_cmd
+    container_cmd=$(get_container_cmd)
+
+    # Handle --status flag
+    if [ "$model" = "--status" ]; then
+        echo ""
+        printf "${BLUE}=== Opencode Configuration Status ===${NC}\n"
+        echo ""
+        
+        if [ ! -f "$config_file" ]; then
+            printf "  ${RED}✗ Opencode not installed${NC}\n"
+            printf "  Config file not found: %s\n" "$config_file"
+            return 1
+        fi
+        
+        printf "  ${GREEN}✓ Opencode config found${NC}\n"
+        printf "  Location: %s\n" "$config_file"
+        echo ""
+        
+        # Try to extract current model using sed/grep
+        local current_model
+        current_model=$(grep -E '"model"\s*:' "$config_file" 2>/dev/null | head -1 | sed 's/.*"model"\s*:\s*"\([^"]*\)".*/\1/')
+        printf "  Current model: %s\n" "${current_model:-unknown}"
+        
+        local current_small
+        current_small=$(grep -E '"small_model"\s*:' "$config_file" 2>/dev/null | head -1 | sed 's/.*"small_model"\s*:\s*"\([^"]*\)".*/\1/')
+        printf "  Small model: %s\n" "${current_small:-unknown}"
+        echo ""
+        
+        # Check if using Ollama
+        if echo "$current_model" | grep -q "^ollama/"; then
+            printf "  ${GREEN}✓ Using Ollama provider${NC}\n"
+        else
+            printf "  ${YELLOW}⚠ Not using Ollama provider${NC}\n"
+        fi
+        
+        # Check Ollama status
+        echo ""
+        printf "${BLUE}=== Ollama Status ===${NC}\n"
+        if check_is_container_mode; then
+            if [ -n "$container_cmd" ] && $container_cmd ps --format '{{.Names}}' 2>/dev/null | grep -q "^${DOCKER_CONTAINER}$"; then
+                printf "  ${GREEN}✓ Ollama container is running${NC}\n"
+            else
+                printf "  ${RED}✗ Ollama container not running${NC}\n"
+            fi
+        elif systemctl --user is-active ollama >/dev/null 2>&1; then
+            printf "  ${GREEN}✓ Ollama service is running${NC}\n"
+        else
+            printf "  ${RED}✗ Ollama not running${NC}\n"
+        fi
+        
+        return 0
+    fi
+
+    # Strip ollama/ prefix if user provided it
+    model=$(echo "$model" | sed 's/^ollama\///')
+
+    log_info "Configuring opencode to use Ollama with model: $model"
+    echo ""
+
+    # 1. Check if opencode is installed
+    if [ ! -f "$config_file" ]; then
+        log_error "Opencode is not installed or config file not found"
+        printf "Config file expected at: %s\n" "$config_file"
+        echo ""
+        echo "To install opencode:"
+        echo "  curl -fsSL https://opencode.ai/install.sh | sh"
+        return 1
+    fi
+    log_success "Found opencode config: $config_file"
+
+    # 2. Check if Ollama is running
+    local ollama_running=false
+    if check_is_container_mode; then
+        if [ -n "$container_cmd" ] && $container_cmd ps --format '{{.Names}}' 2>/dev/null | grep -q "^${DOCKER_CONTAINER}$"; then
+            ollama_running=true
+        fi
+    elif systemctl --user is-active ollama >/dev/null 2>&1; then
+        ollama_running=true
+    fi
+
+    if [ "$ollama_running" = "false" ]; then
+        log_error "Ollama is not running"
+        echo ""
+        echo "Start Ollama first:"
+        echo "  devtools-steamdeck-llm start"
+        return 1
+    fi
+    log_success "Ollama is running"
+
+    # 3. Check if model exists in Ollama
+    local model_exists=false
+    local available_models
+    if check_is_container_mode; then
+        if [ -n "$container_cmd" ]; then
+            available_models=$($container_cmd exec "$DOCKER_CONTAINER" ollama list 2>/dev/null | tail -n +2 | awk '{print $1}')
+        fi
+    else
+        available_models=$(ollama list 2>/dev/null | tail -n +2 | awk '{print $1}')
+    fi
+
+    if echo "$available_models" | grep -q "^${model}$"; then
+        model_exists=true
+    fi
+
+    if [ "$model_exists" = "false" ]; then
+        log_warn "Model '$model' not found in Ollama"
+        echo ""
+        echo "Available models:"
+        echo "$available_models" | head -10 | sed 's/^/  - /'
+        if [ "$(echo "$available_models" | wc -l)" -gt 10 ]; then
+            echo "  ... and more"
+        fi
+        echo ""
+        echo "Pull the model first:"
+        echo "  devtools-steamdeck-llm pull $model"
+        return 1
+    fi
+    log_success "Model '$model' is available in Ollama"
+
+    # 4. Backup original config
+    if command -v jq >/dev/null 2>&1; then
+        # Validate JSON with jq first
+        if ! jq empty "$config_file" 2>/dev/null; then
+            log_warn "Config file has JSON syntax errors, attempting to fix..."
+        fi
+    fi
+    
+    cp "$config_file" "$backup_file"
+    log_info "Backup created: $backup_file"
+
+    # 5. Update the config file
+    local temp_file
+    temp_file=$(mktemp)
+    trap "rm -f $temp_file" EXIT
+
+    if command -v jq >/dev/null 2>&1; then
+        # Use jq for proper JSON manipulation
+        # Note: opencode.jsonc may have comments, strip them first for jq
+        grep -v '^\s*//' "$config_file" | grep -v '^\s*/\*' | grep -v '\*/' | \
+            jq --arg model "ollama/$model" --arg small_model "ollama/$model" \
+               '.model = $model | .small_model = $small_model' > "$temp_file" 2>/dev/null
+        
+        if [ -s "$temp_file" ]; then
+            # Preserve comments by doing a selective replacement
+            # Replace just the model fields while keeping original file structure
+            sed -i.bak "s/\"model\":\s*\"[^\"]*\"/\"model\": \"ollama\/$model\"/" "$config_file"
+            sed -i "s/\"small_model\":\s*\"[^\"]*\"/\"small_model\": \"ollama\/$model\"/" "$config_file"
+            rm -f "${config_file}.bak"
+        else
+            log_warn "jq processing failed, using sed fallback"
+            cp "$backup_file" "$config_file"
+            sed -i "s/\"model\":\s*\"[^\"]*\"/\"model\": \"ollama\/$model\"/" "$config_file"
+            sed -i "s/\"small_model\":\s*\"[^\"]*\"/\"small_model\": \"ollama\/$model\"/" "$config_file"
+        fi
+    else
+        # Fallback: use sed to replace model fields
+        log_info "jq not available, using sed for configuration update"
+        sed -i "s/\"model\":\s*\"[^\"]*\"/\"model\": \"ollama\/$model\"/" "$config_file"
+        sed -i "s/\"small_model\":\s*\"[^\"]*\"/\"small_model\": \"ollama\/$model\"/" "$config_file"
+    fi
+
+    # 6. Validate the result
+    if command -v jq >/dev/null 2>&1; then
+        if jq empty "$config_file" 2>/dev/null; then
+            log_success "Configuration validated successfully"
+        else
+            log_warn "JSON validation warning (file may contain comments which is valid for .jsonc)"
+        fi
+    else
+        # Basic syntax check: count braces
+        local open_braces close_braces
+        open_braces=$(grep -o '{' "$config_file" | wc -l)
+        close_braces=$(grep -o '}' "$config_file" | wc -l)
+        if [ "$open_braces" -eq "$close_braces" ]; then
+            log_success "Basic syntax check passed"
+        else
+            log_error "Syntax error detected - braces mismatch"
+            log_info "Restoring from backup..."
+            cp "$backup_file" "$config_file"
+            return 1
+        fi
+    fi
+
+    # 7. Show summary
+    echo ""
+    printf "${GREEN}✓ Configuration updated successfully!${NC}\n"
+    echo ""
+    printf "${BLUE}=== Changes Made ===${NC}\n"
+    printf "  Model:       ollama/%s\n" "$model"
+    printf "  Small Model: ollama/%s\n" "$model"
+    echo ""
+    printf "  Backup:      %s\n" "$backup_file"
+    echo ""
+    printf "${BLUE}=== Verification ===${NC}\n"
+    printf "  Config file: %s\n" "$config_file"
+    echo ""
+    echo "Test the configuration:"
+    echo "  opencode ask \"Hello, are you using Ollama?\""
+    echo ""
+    log_info "To restore original config:"
+    echo "  cp $backup_file $config_file"
+}
+
 # ── GPU verification ─────────────────────────────────────────────────────────
 cmd_verify_gpu() {
     local container_cmd
@@ -884,6 +1117,10 @@ main() {
             ;;
         verify-gpu)
             cmd_verify_gpu
+            ;;
+        opencode-config)
+            shift
+            cmd_opencode_config "$@"
             ;;
         help|-h|--help)
             usage

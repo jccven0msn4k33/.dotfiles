@@ -1,8 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "autoupdate": true,
-  "model": "anthropic/claude-sonnet-4-5",
-  "small_model": "anthropic/claude-haiku-4-5",
+  "model": "dmr/ai/llama3.2:3B-Q4_K_M",
+  "small_model": "dmr/ai/llama3.2:3B-Q4_K_M",
   "instructions": [
     "AGENTS.md",
     "GIT_COMMIT_GUARD.md"
@@ -32,7 +32,33 @@
     }
   },
   "provider": {
-    "github-copilot": {}
+    "dmr": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Docker Model Runner",
+      "options": {
+        "baseURL": "http://localhost:12434/v1"
+      },
+      "models": {
+        "ai/llama3.2:3B-Q4_K_M": {
+          "name": "llama3.2:3B"
+        }
+      }
+    },
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "llama3.2": {
+          "name": "llama3.2"
+        },
+        "qwen2.5-coder:3b": {
+          "name": "qwen2.5-coder:3b"
+        }
+      }
+    }
   },
   "mcp": {
     "context7": {

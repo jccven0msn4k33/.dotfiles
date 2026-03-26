@@ -5,23 +5,24 @@
 # Usage: devtools-steamdeck-llm {install|uninstall|start|stop|status|models|pull|thermal|recommend|logs|verify-gpu}
 #
 # Commands:
-#   install {docker|native}  Install Ollama (docker or native mode)
-#   uninstall                Remove Ollama and systemd service
-#   start                    Start the Ollama user service
-#   stop                     Stop the Ollama user service
-#   status                   Check Ollama service status
-#   models                   List installed models
-#   pull <model>             Pull a specific model
-#   thermal                  Show CPU/GPU temps and thermal status
-#   recommend                Show model recommendations for Steam Deck
-#   logs                     Show recent Ollama logs
-#   verify-gpu               Check if GPU acceleration is working
+#   install {container|native}  Install Ollama (container or native mode)
+#   uninstall                   Remove Ollama and systemd service
+#   start                       Start the Ollama user service
+#   stop                        Stop the Ollama user service
+#   status                      Check Ollama service status
+#   models                      List installed models
+#   pull <model>                Pull a specific model
+#   thermal                     Show CPU/GPU temps and thermal status
+#   recommend                   Show model recommendations for Steam Deck
+#   logs                        Show recent Ollama logs
+#   verify-gpu                  Check if GPU acceleration is working
 #
 # Steam Deck Configuration:
 #   - Uses user-mode systemd service (no root required for runtime)
 #   - Requires HSA_OVERRIDE_GFX_VERSION=10.3.0 for gfx1033 GPU support
 #   - Thermal throttling starts at ~85°C junction temperature
 #   - Recommended models: phi3 (3.8B), qwen2.5-coder:3b, deepseek-coder:1.3b
+#   - Container mode uses Podman (rootless, no daemon, via podman-docker compatibility)
 #
 # POSIX sh — no bashisms.
 
@@ -34,8 +35,9 @@ OLLAMA_SERVICE="ollama.service"
 OLLAMA_BIN="${HOME}/.local/bin/ollama"
 OLLAMA_INSTALL_URL="https://ollama.com/install.sh"
 
-# Docker configuration for Steam Deck
+# Container configuration for Steam Deck (Podman-compatible)
 # Image tag verified on DockerHub: 0.6.3-gfx1033-rocm6.3.3-rocm
+# Note: DOCKER_IMAGE/DOCKER_CONTAINER names kept for compatibility with podman-docker
 DOCKER_IMAGE="sebastianlutter/ollama-for-steamdeck:0.6.3-gfx1033-rocm6.3.3-rocm"
 DOCKER_CONTAINER="ollama-steamdeck"
 
@@ -74,6 +76,18 @@ usage() {
     sed -n '/^# Commands:/,/^# Steam/p' "$0" | grep '^#' | sed 's/^# \{0,1\}//'
 }
 
+# ── container runtime detection ──────────────────────────────────────────────
+get_container_cmd() {
+    # Prefer podman over docker (podman is rootless, no daemon needed)
+    if command -v podman >/dev/null 2>&1; then
+        echo "podman"
+    elif command -v docker >/dev/null 2>&1; then
+        echo "docker"
+    else
+        echo ""
+    fi
+}
+
 # ── checks ───────────────────────────────────────────────────────────────────
 check_steamos() {
     if [ -f "/etc/os-release" ]; then
@@ -93,24 +107,30 @@ check_ollama_installed() {
     if [ -x "$OLLAMA_BIN" ]; then
         return 0
     fi
-    if command -v docker >/dev/null 2>&1; then
-        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${DOCKER_CONTAINER}$"; then
+    local cmd
+    cmd=$(get_container_cmd)
+    if [ -n "$cmd" ]; then
+        if $cmd ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${DOCKER_CONTAINER}$"; then
             return 0
         fi
     fi
     return 1
 }
 
-check_docker_available() {
-    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+check_container_available() {
+    local cmd
+    cmd=$(get_container_cmd)
+    if [ -n "$cmd" ] && $cmd info >/dev/null 2>&1; then
         return 0
     fi
     return 1
 }
 
-check_is_docker_mode() {
-    if command -v docker >/dev/null 2>&1; then
-        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${DOCKER_CONTAINER}$"; then
+check_is_container_mode() {
+    local cmd
+    cmd=$(get_container_cmd)
+    if [ -n "$cmd" ]; then
+        if $cmd ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${DOCKER_CONTAINER}$"; then
             return 0
         fi
     fi
@@ -148,44 +168,57 @@ cmd_install() {
     
     if [ -z "$mode" ]; then
         log_error "Install mode required"
-        echo "Usage: devtools-steamdeck-llm install {docker|native}"
+        echo "Usage: devtools-steamdeck-llm install {container|native}"
         echo ""
         echo "Install modes:"
-        echo "  docker  - Use Docker with pre-built gfx1033 support (recommended)"
-        echo "  native  - Native installation with environment override"
+        echo "  container  - Use Podman/Docker with pre-built gfx1033 support (recommended)"
+        echo "  native     - Native installation with environment override"
         echo ""
-        echo "Recommendation: Use 'docker' mode for best compatibility"
+        echo "Note: Container mode uses Podman (rootless, no daemon) via podman-docker"
+        echo "      for compatibility with existing docker commands."
+        echo ""
+        echo "Recommendation: Use 'container' mode for best compatibility"
         return 1
     fi
     
     case "$mode" in
-        docker)
-            install_docker
+        container|docker)
+            install_container
             ;;
         native)
             install_native
             ;;
         *)
             log_error "Unknown install mode: $mode"
-            echo "Use 'docker' or 'native'"
+            echo "Use 'container' or 'native'"
             return 1
             ;;
     esac
 }
 
-install_docker() {
-    log_info "Starting Ollama Docker installation for Steam Deck..."
+install_container() {
+    log_info "Starting Ollama container installation for Steam Deck..."
+    log_info "Using Podman (rootless, no daemon required)..."
     
-    if ! check_docker_available; then
-        log_error "Docker is not installed or not running"
-        log_info "Install Docker with: dotfiles-steamdeck docker-install"
+    local container_cmd
+    container_cmd=$(get_container_cmd)
+    
+    if [ -z "$container_cmd" ]; then
+        log_error "Podman/Docker is not installed or not running"
+        log_info "Install Podman with: dotfiles-steamdeck podman-install"
         return 1
+    fi
+    
+    if [ "$container_cmd" = "podman" ]; then
+        log_info "Detected Podman (preferred for Steam Deck)"
+    else
+        log_warn "Podman not found, falling back to Docker"
     fi
     
     if check_ollama_installed; then
         log_warn "Ollama is already installed."
-        if check_is_docker_mode; then
-            log_info "Found existing Docker container: ${DOCKER_CONTAINER}"
+        if check_is_container_mode; then
+            log_info "Found existing container: ${DOCKER_CONTAINER}"
         else
             log_info "Found native installation. Use 'uninstall' first if you want to switch."
         fi
@@ -194,14 +227,16 @@ install_docker() {
     
     setup_environment
     
-    log_info "Pulling pre-built Docker image: ${DOCKER_IMAGE}"
+    log_info "Pulling container image: ${DOCKER_IMAGE}"
     log_info "This may take several minutes..."
-    docker pull "$DOCKER_IMAGE"
+    $container_cmd pull "$DOCKER_IMAGE"
     
-    log_info "Creating Docker container with gfx1033 support..."
-    docker run -d \
+    log_info "Creating container with gfx1033 support..."
+    # Podman rootless uses --userns=keep-id by default
+    # Add --group-add keep-groups to preserve GPU device access
+    $container_cmd run -d \
         --name "$DOCKER_CONTAINER" \
-        --restart unless-stopped \
+        --replace \
         --device /dev/kfd \
         --device /dev/dri \
         -p 127.0.0.1:11434:11434 \
@@ -210,17 +245,17 @@ install_docker() {
         -e "HIP_VISIBLE_DEVICES=0" \
         "$DOCKER_IMAGE"
     
-    log_success "Docker container created and started!"
+    log_success "Container created and started!"
     log_info "Container name: ${DOCKER_CONTAINER}"
     log_info "API endpoint: http://127.0.0.1:11434"
     
     sleep 3
     
-    if docker ps --format '{{.Names}}' | grep -q "^${DOCKER_CONTAINER}$"; then
-        log_success "Ollama is running in Docker!"
+    if $container_cmd ps --format '{{.Names}}' | grep -q "^${DOCKER_CONTAINER}$"; then
+        log_success "Ollama is running in container!"
         
         log_info "Pulling recommended model (phi3)..."
-        docker exec "$DOCKER_CONTAINER" ollama pull phi3 2>&1 | while read -r line; do
+        $container_cmd exec "$DOCKER_CONTAINER" ollama pull phi3 2>&1 | while read -r line; do
             printf "."
         done
         printf "\n"
@@ -228,9 +263,15 @@ install_docker() {
         log_success "Installation complete!"
         echo ""
         echo "Quick start:"
-        echo "  Run a model:    docker exec -it ${DOCKER_CONTAINER} ollama run phi3"
-        echo "  List models:    docker exec ${DOCKER_CONTAINER} ollama list"
-        echo "  Container logs: docker logs -f ${DOCKER_CONTAINER}"
+        if [ "$container_cmd" = "podman" ]; then
+            echo "  Run a model:    podman exec -it ${DOCKER_CONTAINER} ollama run phi3"
+            echo "  List models:    podman exec ${DOCKER_CONTAINER} ollama list"
+            echo "  Container logs: podman logs -f ${DOCKER_CONTAINER}"
+        else
+            echo "  Run a model:    docker exec -it ${DOCKER_CONTAINER} ollama run phi3"
+            echo "  List models:    docker exec ${DOCKER_CONTAINER} ollama list"
+            echo "  Container logs: docker logs -f ${DOCKER_CONTAINER}"
+        fi
         echo ""
         echo "Recommended models:"
         echo "  phi3               - Fast general purpose (3.8B)"
@@ -240,7 +281,7 @@ install_docker() {
         log_warn "Thermal management: Monitor temps with 'devtools-steamdeck-llm thermal'"
     else
         log_error "Container failed to start"
-        docker logs "$DOCKER_CONTAINER" 2>&1 | tail -20
+        $container_cmd logs "$DOCKER_CONTAINER" 2>&1 | tail -20
         return 1
     fi
 }
@@ -377,12 +418,17 @@ EOF
 cmd_uninstall() {
     log_info "Uninstalling Ollama..."
     
-    # Stop and remove Docker container
-    if check_is_docker_mode; then
-        log_info "Stopping Docker container..."
-        docker stop "$DOCKER_CONTAINER" 2>/dev/null || true
-        docker rm "$DOCKER_CONTAINER" 2>/dev/null || true
-        log_info "Docker container removed"
+    local container_cmd
+    container_cmd=$(get_container_cmd)
+    
+    # Stop and remove container
+    if check_is_container_mode; then
+        log_info "Stopping container..."
+        if [ -n "$container_cmd" ]; then
+            $container_cmd stop "$DOCKER_CONTAINER" 2>/dev/null || true
+            $container_cmd rm "$DOCKER_CONTAINER" 2>/dev/null || true
+        fi
+        log_info "Container removed"
     fi
     
     # Stop and disable native service
@@ -410,14 +456,21 @@ cmd_uninstall() {
 
 # ── service control ──────────────────────────────────────────────────────────
 cmd_start() {
-    if check_is_docker_mode; then
-        log_info "Starting Docker container..."
-        docker start "$DOCKER_CONTAINER"
+    local container_cmd
+    container_cmd=$(get_container_cmd)
+    
+    if check_is_container_mode; then
+        log_info "Starting container..."
+        if [ -z "$container_cmd" ]; then
+            log_error "No container runtime available (podman/docker)"
+            return 1
+        fi
+        $container_cmd start "$DOCKER_CONTAINER"
         sleep 2
-        if docker ps --format '{{.Names}}' | grep -q "^${DOCKER_CONTAINER}$"; then
-            log_success "Docker container started"
+        if $container_cmd ps --format '{{.Names}}' | grep -q "^${DOCKER_CONTAINER}$"; then
+            log_success "Container started"
         else
-            log_error "Failed to start Docker container"
+            log_error "Failed to start container"
             return 1
         fi
     else
@@ -441,13 +494,20 @@ cmd_start() {
 }
 
 cmd_stop() {
-    if check_is_docker_mode; then
-        log_info "Stopping Docker container..."
-        docker stop "$DOCKER_CONTAINER"
-        if ! docker ps --format '{{.Names}}' | grep -q "^${DOCKER_CONTAINER}$"; then
-            log_success "Docker container stopped"
+    local container_cmd
+    container_cmd=$(get_container_cmd)
+    
+    if check_is_container_mode; then
+        log_info "Stopping container..."
+        if [ -z "$container_cmd" ]; then
+            log_error "No container runtime available"
+            return 1
+        fi
+        $container_cmd stop "$DOCKER_CONTAINER"
+        if ! $container_cmd ps --format '{{.Names}}' | grep -q "^${DOCKER_CONTAINER}$"; then
+            log_success "Container stopped"
         else
-            log_error "Failed to stop Docker container"
+            log_error "Failed to stop container"
             return 1
         fi
     else
@@ -463,12 +523,17 @@ cmd_stop() {
 }
 
 cmd_status() {
+    local container_cmd
+    container_cmd=$(get_container_cmd)
+    
     echo ""
     printf "${BLUE}=== Installation Mode ===${NC}\n"
-    if check_is_docker_mode; then
-        echo "Mode: Docker (recommended)"
+    if check_is_container_mode; then
+        echo "Mode: Container (Podman/Docker)"
         echo "Container: ${DOCKER_CONTAINER}"
-        docker ps --filter "name=${DOCKER_CONTAINER}" --format "Status: {{.Status}}"
+        if [ -n "$container_cmd" ]; then
+            $container_cmd ps --filter "name=${DOCKER_CONTAINER}" --format "Status: {{.Status}}"
+        fi
     elif check_ollama_installed; then
         echo "Mode: Native"
     else
@@ -477,16 +542,24 @@ cmd_status() {
     
     echo ""
     printf "${BLUE}=== Service Status ===${NC}\n"
-    if check_is_docker_mode; then
-        docker ps --filter "name=${DOCKER_CONTAINER}"
+    if check_is_container_mode; then
+        if [ -n "$container_cmd" ]; then
+            $container_cmd ps --filter "name=${DOCKER_CONTAINER}"
+        else
+            echo "No container runtime available"
+        fi
     else
         systemctl --user status "$OLLAMA_SERVICE" --no-pager 2>/dev/null || echo "Service not running"
     fi
     
     echo ""
     printf "${BLUE}=== Ollama Version ===${NC}\n"
-    if check_is_docker_mode; then
-        docker exec "$DOCKER_CONTAINER" ollama --version 2>/dev/null || echo "Container not responding"
+    if check_is_container_mode; then
+        if [ -n "$container_cmd" ]; then
+            $container_cmd exec "$DOCKER_CONTAINER" ollama --version 2>/dev/null || echo "Container not responding"
+        else
+            echo "No container runtime available"
+        fi
     elif command -v ollama >/dev/null 2>&1; then
         ollama --version 2>/dev/null || echo "Version check failed"
     else
@@ -495,8 +568,12 @@ cmd_status() {
     
     echo ""
     printf "${BLUE}=== Installed Models ===${NC}\n"
-    if check_is_docker_mode; then
-        docker exec "$DOCKER_CONTAINER" ollama list 2>/dev/null || echo "No models or container not running"
+    if check_is_container_mode; then
+        if [ -n "$container_cmd" ]; then
+            $container_cmd exec "$DOCKER_CONTAINER" ollama list 2>/dev/null || echo "No models or container not running"
+        else
+            echo "No container runtime available"
+        fi
     elif ollama list 2>/dev/null; then
         :
     else
@@ -508,13 +585,21 @@ cmd_status() {
     printf "OLLAMA_HOST: %s\n" "${OLLAMA_HOST}"
     printf "OLLAMA_MODELS: %s\n" "${OLLAMA_MODELS}"
     printf "HSA_OVERRIDE_GFX_VERSION: %s\n" "${HSA_OVERRIDE_GFX_VERSION}"
+    printf "Container runtime: %s\n" "${container_cmd:-none}"
 }
 
 # ── model management ──────────────────────────────────────────────────────────
 cmd_models() {
-    if check_is_docker_mode; then
-        if ! docker exec "$DOCKER_CONTAINER" ollama list 2>/dev/null; then
-            log_warn "Docker container not running or no models"
+    local container_cmd
+    container_cmd=$(get_container_cmd)
+    
+    if check_is_container_mode; then
+        if [ -z "$container_cmd" ]; then
+            log_warn "No container runtime available"
+            return 1
+        fi
+        if ! $container_cmd exec "$DOCKER_CONTAINER" ollama list 2>/dev/null; then
+            log_warn "Container not running or no models"
             return 1
         fi
     elif ! ollama list 2>/dev/null; then
@@ -533,11 +618,17 @@ cmd_pull() {
     fi
     
     local model="$1"
+    local container_cmd
+    container_cmd=$(get_container_cmd)
     
     log_info "Pulling model: $model"
     
-    if check_is_docker_mode; then
-        if docker exec "$DOCKER_CONTAINER" ollama pull "$model"; then
+    if check_is_container_mode; then
+        if [ -z "$container_cmd" ]; then
+            log_error "No container runtime available"
+            return 1
+        fi
+        if $container_cmd exec "$DOCKER_CONTAINER" ollama pull "$model"; then
             log_success "Model '$model' pulled successfully"
         else
             log_error "Failed to pull model '$model'"
@@ -642,9 +733,16 @@ cmd_recommend() {
 
 # ── logs ─────────────────────────────────────────────────────────────────────
 cmd_logs() {
-    if check_is_docker_mode; then
-        log_info "Showing Docker container logs..."
-        docker logs --tail 50 -f "$DOCKER_CONTAINER"
+    local container_cmd
+    container_cmd=$(get_container_cmd)
+    
+    if check_is_container_mode; then
+        if [ -z "$container_cmd" ]; then
+            log_error "No container runtime available"
+            return 1
+        fi
+        log_info "Showing container logs..."
+        $container_cmd logs --tail 50 -f "$DOCKER_CONTAINER"
     else
         log_info "Showing systemd journal logs..."
         journalctl --user -u ollama -f
@@ -653,6 +751,9 @@ cmd_logs() {
 
 # ── GPU verification ─────────────────────────────────────────────────────────
 cmd_verify_gpu() {
+    local container_cmd
+    container_cmd=$(get_container_cmd)
+    
     echo ""
     printf "${BLUE}=== GPU Acceleration Verification ===${NC}\n"
     echo ""
@@ -677,8 +778,12 @@ cmd_verify_gpu() {
     printf "  Testing GPU inference with small model...\n"
     
     local test_output
-    if check_is_docker_mode; then
-        test_output=$(docker exec "$DOCKER_CONTAINER" ollama run phi3 "Say 'GPU test'" 2>&1) || true
+    if check_is_container_mode; then
+        if [ -z "$container_cmd" ]; then
+            printf "  ${RED}No container runtime available${NC}\n"
+            return 1
+        fi
+        test_output=$($container_cmd exec "$DOCKER_CONTAINER" ollama run phi3 "Say 'GPU test'" 2>&1) || true
     elif ollama list 2>/dev/null | grep -q phi3; then
         test_output=$(ollama run phi3 "Say 'GPU test'" 2>&1) || true
     else
@@ -696,11 +801,12 @@ cmd_verify_gpu() {
         printf "  ${YELLOW}GPU status unclear - verify manually${NC}\n"
     fi
     
-    printf "\n${BLUE}=== Docker-Specific (if using Docker) ===${NC}\n"
-    if check_is_docker_mode; then
+    printf "\n${BLUE}=== Container Mode (if applicable) ===${NC}\n"
+    if check_is_container_mode; then
         printf "  Container: ${DOCKER_CONTAINER}\n"
         printf "  Image: ${DOCKER_IMAGE}\n"
-        printf "  ${GREEN}✓ Docker mode uses pre-built gfx1033 support${NC}\n"
+        printf "  Runtime: ${container_cmd}\n"
+        printf "  ${GREEN}✓ Container mode uses pre-built gfx1033 support${NC}\n"
     else
         printf "  Native installation - ensure HSA_OVERRIDE_GFX_VERSION=10.3.0\n"
     fi

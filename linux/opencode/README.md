@@ -42,6 +42,26 @@ This directory contains [opencode](https://opencode.ai) configuration files that
 | `sonarqube-mcp` | `SONARQUBE_TOKEN`, `SONARQUBE_URL` | Your SonarQube instance → My Account → Security |
 | `buildkite-mcp` | **None** — uses OAuth | Remote MCP at `https://mcp.buildkite.com/mcp`; authenticate via OAuth browser flow when first enabled |
 
+## Plugin Configuration
+
+### opencode-mem
+
+The `opencode-mem` plugin uses environment variables for user profile information:
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `OPENCODE_MEM_USER_EMAIL` | Your email for memory attribution | `john@example.com` |
+| `OPENCODE_MEM_USER_NAME` | Your name for memory attribution | `John Doe` |
+
+Add these to your `~/.config/opencode/.env` file (not committed to git):
+
+```sh
+OPENCODE_MEM_USER_EMAIL=john@example.com
+OPENCODE_MEM_USER_NAME="John Doe"
+```
+
+These values are interpolated via `{env:VARIABLE_NAME}` syntax in `opencode-mem.jsonc`, keeping personal info out of version control.
+
 ## How It Works
 
 The `.env` file is sourced automatically by `~/.profile` on shell startup:

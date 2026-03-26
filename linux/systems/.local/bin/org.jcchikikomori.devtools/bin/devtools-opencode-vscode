@@ -29,12 +29,14 @@ COMMANDS:
     generate    Generate VSCode MCP settings and Copilot extension configs
     apply       Generate and apply settings to VSCode (creates backup first)
     list        List all detected MCPs from opencode.jsonc
-    extensions Create Copilot Chat extension package.json files only
+    extensions  Create Copilot Chat extension package.json files only
     project     Generate project-level .vscode/mcp.json (defaults to CWD)
+    install     Install MCPs to VSCode using 'code --add-mcp' CLI
     help        Show this help message
 
 OPTIONS:
-    project     Optional path to project directory (default: current directory)
+    project       Optional path to project directory (default: current directory)
+    install       Optional MCP name to install specific server (default: all)
 
 EXAMPLES:
     devtools-opencode-vscode list
@@ -42,11 +44,15 @@ EXAMPLES:
     devtools-opencode-vscode apply
     devtools-opencode-vscode project
     devtools-opencode-vscode project /path/to/my-project
-    devtools-opencode-vscode project ~/Projects/my-app
+    devtools-opencode-vscode install
+    devtools-opencode-vscode install context7
+    devtools-opencode-vscode install web-forager
 
 NOTES:
     - VSCode v1.99+ required for native MCP support
     - Project-level mcp.json allows team sharing of MCP configuration
+    - 'install' uses 'code --add-mcp' CLI - works on immutable systems (AppImage)
+    - On Arch/SteamOS: use 'dotfiles-steamdeck package-install visual-studio-code-bin' first
     - Backup is created before applying settings
 
 EOF
@@ -127,6 +133,7 @@ _list_mcps() {
 }
 
 # Generate VSCode MCP settings JSON
+# Includes ALL MCPs regardless of enabled status
 _generate_mcp_settings() {
     if [ ! -f "$OPENCODE_CONFIG" ]; then
         _log "No opencode.jsonc found"
@@ -143,17 +150,16 @@ _generate_mcp_settings() {
     # Use temp file for output
     mcp_tmp=$(mktemp)
 
-    # Extract and format MCPs using jq
+    # Extract and format MCPs using jq - include ALL MCPs
     grep -v '^\s*//' "$OPENCODE_CONFIG" | jq '
         if .mcp then
             .mcp | to_entries |
-            map(select(.value.enabled == true)) |
             map({
                 key: .key,
                 value: {
                     command: (if .value.type == "local" then .value.command else null end),
                     url: (if .value.type == "remote" then .value.url else null end),
-                    enabled: true
+                    enabled: (.value.enabled // false)
                 }
             }) | from_entries
         else
@@ -298,11 +304,10 @@ _generate_extensions() {
         _error "jq is required for extension generation"
     fi
 
-    # Parse and generate extensions for each MCP
+    # Parse and generate extensions for each MCP (ALL MCPs)
     grep -v '^\s*//' "$OPENCODE_CONFIG" | jq -r '
         if .mcp then
             .mcp | to_entries[] |
-            select(.value.enabled == true) |
             .key as $name |
             .value as $val |
             "\($name)|\($val.type)|\($val.command // "")|\($val.url // "")"
@@ -335,6 +340,7 @@ _generate_extensions() {
 
 # Generate VSCode mcp.json for project-level MCP configuration
 # This creates .vscode/mcp.json which can be committed to the project
+# Includes ALL MCPs regardless of enabled status
 _generate_mcp_json() {
     if [ ! -f "$OPENCODE_CONFIG" ]; then
         _error "opencode.jsonc not found at $OPENCODE_CONFIG"
@@ -348,16 +354,16 @@ _generate_mcp_json() {
     mcp_tmp=$(mktemp)
 
     # Generate mcp.json format (VSCode project-level MCP)
-    # Format: https://code.visualstudio.com/docs/copilot/chat#_mcp-servers
+    # Include ALL MCPs regardless of enabled status
     grep -v '^\s*//' "$OPENCODE_CONFIG" | jq '
         if .mcp then
             .mcp | to_entries |
-            map(select(.value.enabled == true)) |
             map({
                 name: .key,
                 type: .value.type,
                 command: (if .value.type == "local" then .value.command else null end),
-                url: (if .value.type == "remote" then .value.url else null end)
+                url: (if .value.type == "remote" then .value.url else null end),
+                enabled: (.value.enabled // false)
             })
         else
             []
@@ -407,15 +413,15 @@ _apply_project_mcp() {
         _log "Backed up existing mcp.json to $backup"
     fi
 
-    # Generate mcp.json content
+    # Generate mcp.json content with "servers" wrapper
     local mcp_content
     mcp_content=$(_generate_mcp_json)
 
-    # Wrap in mcpServers object for VSCode format
+    # Wrap in "servers" object for VSCode mcp.json format
     if [ "$mcp_content" = "[]" ] || [ -z "$mcp_content" ]; then
-        echo '{}' > "$mcp_json_file"
+        echo '{"servers": {}}' > "$mcp_json_file"
     else
-        # Convert array to mcpServers object
+        # Convert array to servers object with "servers" wrapper
         echo "$mcp_content" | jq '
             map({
                 key: .name,
@@ -423,19 +429,141 @@ _apply_project_mcp() {
                     command: .command,
                     url: .url
                 }
-            }) | from_entries
-        ' > "$mcp_json_file" 2>/dev/null || echo '{}' > "$mcp_json_file"
+            }) | from_entries | {"servers": .}
+        ' > "$mcp_json_file" 2>/dev/null || echo '{"servers": {}}' > "$mcp_json_file"
     fi
 
     _log "Generated mcp.json at $mcp_json_file"
     _log "Add .vscode/ to your gitignore if you want to exclude it from version control"
 }
 
+# ─── Install MCP via VSCode CLI ───────────────────────────────────────────
+
+# Check if code CLI is available
+_has_code() {
+    command -v code >/dev/null 2>&1
+}
+
+# Install MCP server using VSCode CLI (works on immutable systems)
+_install_mcp() {
+    local mcp_name="${1:-}"
+
+    if ! _has_code; then
+        _error "VSCode 'code' CLI not found. Install VSCode or add it to PATH."
+    fi
+
+    if [ ! -f "$OPENCODE_CONFIG" ]; then
+        _error "opencode.jsonc not found at $OPENCODE_CONFIG"
+    fi
+
+    if ! _has_jq; then
+        _error "jq is required for MCP installation"
+    fi
+
+    # Parse MCPs and install
+    local mcp_count=0
+    local install_count=0
+
+    mcp_count=$(grep -v '^\s*//' "$OPENCODE_CONFIG" | jq '.mcp | length' 2>/dev/null || echo "0")
+
+    _log "Found $mcp_count MCP(s) in opencode.jsonc"
+
+    # Install specific MCP or all
+    if [ -n "$mcp_name" ]; then
+        _log "Installing MCP: $mcp_name"
+        _install_single_mcp "$mcp_name"
+    else
+        _log "Installing all MCPs..."
+        # Get all MCP names and install each
+        grep -v '^\s*//' "$OPENCODE_CONFIG" | jq -r '
+            if .mcp then
+                .mcp | keys[]
+            else
+                empty
+            end
+        ' 2>/dev/null | while read -r name; do
+            if [ -n "$name" ]; then
+                _install_single_mcp "$name"
+                install_count=$((install_count + 1))
+            fi
+        done
+        _log "Installed $install_count MCP(s)"
+    fi
+
+    _log "Restart VSCode to use the new MCP servers"
+}
+
+# Install a single MCP server
+_install_single_mcp() {
+    local mcp_name="$1"
+
+    # Get MCP config
+    local mcp_config
+    mcp_config=$(grep -v '^\s*//' "$OPENCODE_CONFIG" | jq -r "
+        if .mcp and .mcp.\"$mcp_name\" then
+            .mcp.\"$mcp_name\"
+        else
+            empty
+        end
+    " 2>/dev/null)
+
+    if [ -z "$mcp_config" ] || [ "$mcp_config" = "null" ]; then
+        _log "MCP '$mcp_name' not found in configuration"
+        return 1
+    fi
+
+    # Extract type, command, and url
+    local mcp_type mcp_command mcp_url
+    mcp_type=$(echo "$mcp_config" | jq -r '.type // "local"')
+    mcp_command=$(echo "$mcp_config" | jq -r '.command | if type == "array" then join(" ") else . end // ""')
+    mcp_url=$(echo "$mcp_config" | jq -r '.url // ""')
+
+    # Build JSON config for VSCode CLI
+    local json_config
+    if [ "$mcp_type" = "remote" ] && [ -n "$mcp_url" ]; then
+        # Remote MCP server
+        json_config="{\"name\":\"$mcp_name\",\"type\":\"http\",\"url\":\"$mcp_url\"}"
+    elif [ -n "$mcp_command" ]; then
+        # Local MCP server - build command and args
+        # Get command as array and args
+        local cmd_array args_array
+        cmd_array=$(echo "$mcp_config" | jq -r '.command | if type == "array" then . else [.] end | map(tostring) | join(",")' 2>/dev/null)
+        
+        # Build JSON manually
+        local cmd_first args_rest
+        cmd_first=$(echo "$mcp_config" | jq -r '.command[0] // ""')
+        
+        if [ "$(echo "$mcp_config" | jq -r '.command | length')" -gt 1 ]; then
+            args_rest=$(echo "$mcp_config" | jq -r '.command[1:] | map(tostring) | join(",")' 2>/dev/null)
+            json_config="{\"name\":\"$mcp_name\",\"command\":\"$cmd_first\",\"args\":[$args_rest]}"
+        else
+            json_config="{\"name\":\"$mcp_name\",\"command\":\"$cmd_first\",\"args\":[]}"
+        fi
+    else
+        _log "Skipping '$mcp_name' - no valid command or URL"
+        return 1
+    fi
+
+    _log "Adding MCP: $mcp_name"
+    
+    # Use code CLI to add MCP
+    if code --add-mcp "$json_config" 2>/dev/null; then
+        _log "Successfully added $mcp_name"
+    else
+        # Try alternative format
+        if code --add-mcp "$json_config"; then
+            _log "Successfully added $mcp_name"
+        else
+            _log "Failed to add $mcp_name (this is normal if already installed)"
+        fi
+    fi
+}
+
 # ─── Main ───────────────────────────────────────────────────────────────────
 
 main() {
     local command="${1:-help}"
-    local project_path="${2:-}"
+    local arg1="${2:-}"
 
     case "$command" in
         list)
@@ -453,7 +581,10 @@ main() {
             _generate_extensions
             ;;
         project)
-            _apply_project_mcp "$project_path"
+            _apply_project_mcp "$arg1"
+            ;;
+        install)
+            _install_mcp "$arg1"
             ;;
         help|--help|-h)
             _usage

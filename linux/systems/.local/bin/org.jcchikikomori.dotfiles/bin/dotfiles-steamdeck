@@ -166,19 +166,53 @@ docker_remove() {
   log_info "Docker removed successfully"
 }
 
+# Install a package using yay (preferred) or pacman
+package_install() {
+  local package_name="$1"
+
+  if [ -z "$package_name" ]; then
+    log_error "Package name required"
+    echo "Usage: dotfiles-steamdeck package-install <package-name>"
+    return 1
+  fi
+
+  local status
+  status=$(check_readonly_status) || return 1
+
+  if [ "$status" = "enabled" ]; then
+    log_error "SteamOS is read-only. Run 'dotfiles-steamdeck writeable' first"
+    return 1
+  fi
+
+  # Try yay first, then fall back to pacman
+  if command -v yay >/dev/null 2>&1; then
+    log_info "Installing $package_name via yay..."
+    yay -Syy --noconfirm "$package_name"
+  elif command -v pacman >/dev/null 2>&1; then
+    log_info "Installing $package_name via pacman..."
+    sudo pacman -Syy --noconfirm "$package_name"
+  else
+    log_error "Neither yay nor pacman found"
+    return 1
+  fi
+
+  log_info "$package_name installed successfully"
+}
+
 # Main command dispatcher
 main() {
   if [ $# -eq 0 ]; then
-    echo "Usage: dotfiles-steamdeck {reset-audio|writeable|readonly|yay-install|yay-remove|docker-install|docker-remove}"
+    echo "Usage: dotfiles-steamdeck {command} [options]"
     echo ""
     echo "Commands:"
-    echo "  reset-audio      Delete WirePlumber settings to fix corrupt audio"
-    echo "  writeable        Make SteamOS writeable"
-    echo "  readonly         Make SteamOS read-only"
-    echo "  yay-install      Install yay (AUR helper)"
-    echo "  yay-remove       Remove yay"
-    echo "  docker-install   Install Docker"
-    echo "  docker-remove    Remove Docker"
+    echo "  reset-audio       Delete WirePlumber settings to fix corrupt audio"
+    echo "  writeable         Make SteamOS writeable"
+    echo "  readonly          Make SteamOS read-only"
+    echo "  yay-install       Install yay (AUR helper)"
+    echo "  yay-remove        Remove yay"
+    echo "  docker-install    Install Docker"
+    echo "  docker-remove     Remove Docker"
+    echo "  package-install   Install a package (uses yay or pacman)"
     exit 1
   fi
 
@@ -204,9 +238,13 @@ main() {
     docker-remove)
       docker_remove
       ;;
+    package-install)
+      shift
+      package_install "$@"
+      ;;
     *)
       log_error "Unknown command: $1"
-      echo "Usage: dotfiles-steamdeck {reset-audio|writeable|readonly|yay-install|yay-remove|docker-install|docker-remove}"
+      echo "Usage: dotfiles-steamdeck {command} [options]"
       exit 1
       ;;
   esac

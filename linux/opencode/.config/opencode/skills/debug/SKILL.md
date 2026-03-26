@@ -1,3 +1,8 @@
+---
+name: debug
+description: Debug production issues, reproduce bugs, perform root cause analysis using 5 Whys method, and create test cases to verify fixes.
+---
+
 # Production Debugging Skill
 
 **Use Case:** Investigating production issues, reproducing bugs from ticket information, and planning test cases.

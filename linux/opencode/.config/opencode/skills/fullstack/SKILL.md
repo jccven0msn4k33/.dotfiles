@@ -1,3 +1,8 @@
+---
+name: fullstack
+description: Full-stack development combining frontend and backend. Covers data fetching, authentication, monorepo patterns, DevOps awareness, and end-to-end security.
+---
+
 # Full Stack Developer Skill
 
 **Roadmap Alignment:** [roadmap.sh/full-stack](https://roadmap.sh/full-stack) | [roadmap.sh/frontend](https://roadmap.sh/frontend) | [roadmap.sh/backend](https://roadmap.sh/backend)

@@ -1,3 +1,8 @@
+---
+name: component-doc
+description: Document and explain components, files, classes, and code. Generate API documentation, usage examples, and understand unfamiliar code.
+---
+
 # Component Documentation Skill
 
 **Use Case:** Explaining what a component/file does, its use cases, how to use it, API documentation, or understanding unfamiliar code.

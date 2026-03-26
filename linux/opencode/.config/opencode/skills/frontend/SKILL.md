@@ -1,3 +1,8 @@
+---
+name: frontend
+description: Frontend development with React, Vue, modern CSS, accessibility, TypeScript, state management, and web performance optimization.
+---
+
 # Frontend Developer Skill
 
 **Roadmap Alignment:** [roadmap.sh/frontend](https://roadmap.sh/frontend) | [roadmap.sh/react](https://roadmap.sh/react) | [roadmap.sh/vue](https://roadmap.sh/vue)

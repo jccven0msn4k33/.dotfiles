@@ -1,3 +1,8 @@
+---
+name: project-onboarding
+description: Help developers understand new projects including tech stack detection, setup instructions, architecture overview, and getting started guides.
+---
+
 # Project Onboarding Skill
 
 **Use Case:** Helping a developer understand a new project's structure, setup instructions, architecture, or how to get started.

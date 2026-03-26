@@ -388,7 +388,37 @@ install_official() {
 create_systemd_service() {
     log_info "Creating systemd user service..."
     
-    cat > "${HOME}/.config/systemd/user/${OLLAMA_SERVICE}" << 'EOF'
+    # Find the actual Ollama binary location
+    local ollama_binary=""
+    
+    # Check common locations in order of preference
+    if [ -x "/usr/bin/ollama" ]; then
+        ollama_binary="/usr/bin/ollama"
+    elif [ -x "/usr/local/bin/ollama" ]; then
+        ollama_binary="/usr/local/bin/ollama"
+    elif [ -x "${HOME}/.ollama/bin/ollama" ]; then
+        ollama_binary="%h/.ollama/bin/ollama"
+    elif [ -x "${HOME}/.local/bin/ollama" ]; then
+        ollama_binary="%h/.local/bin/ollama"
+    else
+        # Fallback: try to find in PATH
+        ollama_binary=$(command -v ollama 2>/dev/null || true)
+        if [ -n "$ollama_binary" ]; then
+            # Convert absolute path to use %h if in home directory
+            case "$ollama_binary" in
+                "${HOME}/"*) ollama_binary="%h${ollama_binary#$HOME}" ;;
+            esac
+        else
+            # Last resort fallback
+            ollama_binary="/usr/bin/ollama"
+            log_warn "Could not detect Ollama binary location, using default: $ollama_binary"
+        fi
+    fi
+    
+    log_info "Using Ollama binary: $ollama_binary"
+    
+    # Create the service file with the correct binary path
+    cat > "${HOME}/.config/systemd/user/${OLLAMA_SERVICE}" << EOF
 [Unit]
 Description=Ollama Service (User)
 Documentation=https://ollama.com
@@ -403,7 +433,7 @@ Environment="HSA_OVERRIDE_GFX_VERSION=10.3.0"
 Environment="HIP_VISIBLE_DEVICES=0"
 Environment="OLLAMA_NUM_PARALLEL=1"
 Environment="OLLAMA_MAX_LOADED_MODELS=1"
-ExecStart=%h/.ollama/bin/ollama serve
+ExecStart=${ollama_binary} serve
 Restart=always
 RestartSec=3
 
@@ -411,7 +441,7 @@ RestartSec=3
 WantedBy=default.target
 EOF
     
-    log_success "Systemd service created"
+    log_success "Systemd service created with binary: ${ollama_binary}"
 }
 
 # ── uninstall ─────────────────────────────────────────────────────────────────

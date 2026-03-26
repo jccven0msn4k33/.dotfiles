@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "context7": {
+      "command": null,
+      "url": "https://mcp.context7.com/mcp",
+      "enabled": true
+    },
+    "web-forager": {
+      "command": [
+        "web-forager",
+        "serve"
+      ],
+      "url": null,
+      "enabled": true
+    }
+  }
+}

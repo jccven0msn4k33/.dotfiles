@@ -1,3 +1,8 @@
+---
+name: backend
+description: Backend development best practices covering APIs, database design, security, architecture, and performance optimization for Python, Node.js, Ruby, and other server-side frameworks.
+---
+
 # Backend Developer Skill
 
 **Roadmap Alignment:** [roadmap.sh/backend](https://roadmap.sh/backend) | [roadmap.sh/python](https://roadmap.sh/python) | [roadmap.sh/nodejs](https://roadmap.sh/nodejs) | [roadmap.sh/ruby](https://roadmap.sh/ruby)

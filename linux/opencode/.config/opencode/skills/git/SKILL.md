@@ -1,3 +1,8 @@
+---
+name: git
+description: Git workflow rules for this machine. GPG-signed commits required, opencode sessions cannot commit. Focus on staging (git add), reading, and branch management.
+---
+
 # Git Rules
 
 - **Never run `git commit` or `git push`** — these are hard-denied in `opencode.jsonc`.

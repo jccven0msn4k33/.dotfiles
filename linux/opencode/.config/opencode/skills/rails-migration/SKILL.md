@@ -1,3 +1,8 @@
+---
+name: rails-migration
+description: Create Ruby on Rails database migrations and cascade changes across the full MVC stack including models, controllers, views, and tests.
+---
+
 # Rails Migration & Cascade Skill
 
 **Use Case:** Creating new database fields via migrations and correctly cascading those changes across the full MVC stack in Ruby on Rails.

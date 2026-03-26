@@ -1,3 +1,8 @@
+---
+name: shared-templates
+description: Shared output format templates and reference sections for development agents to ensure consistent documentation and responses.
+---
+
 # Agent Shared Templates & References
 
 This document consolidates duplicated sections across agents to reduce maintenance burden and ensure consistency.

@@ -1,3 +1,8 @@
+---
+name: web-audit
+description: Audit web applications for browser compatibility and security vulnerabilities following OWASP API Security Top 10 guidelines.
+---
+
 # Web Compatibility & Security Audit Skill
 
 **Roadmap Alignment:** [roadmap.sh/frontend](https://roadmap.sh/frontend) | [roadmap.sh/cyber-security](https://roadmap.sh/cyber-security)

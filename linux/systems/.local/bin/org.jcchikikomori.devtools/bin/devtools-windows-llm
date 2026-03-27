@@ -36,6 +36,8 @@
 set -eu
 
 # ── configuration ────────────────────────────────────────────────────────────
+NVIDIA_CUDA_IMAGE="nvidia/cuda:12.0.0-devel-ubuntu22.04"
+
 OLLAMA_HOME="${HOME}/.ollama"
 OLLAMA_MODELS="${OLLAMA_HOME}/models"
 DOCKER_CONTAINER="ollama-windows"
@@ -103,9 +105,9 @@ check_nvidia_docker_runtime() {
     if ! check_docker_available; then
         return 1
     fi
-    
+
     # Try to run a simple NVIDIA test container
-    if docker run --rm --gpus all nvidia/cuda:12.0-base-ubuntu22.04 nvidia-smi -L >/dev/null 2>&1; then
+    if docker run --rm --gpus all "$NVIDIA_CUDA_IMAGE" nvidia-smi -L >/dev/null 2>&1; then
         return 0
     fi
     return 1
@@ -134,11 +136,11 @@ check_is_running() {
 # ── environment setup ────────────────────────────────────────────────────────
 setup_environment() {
     log_info "Setting up Ollama environment configuration..."
-    
+
     mkdir -p "$OLLAMA_HOME"
     mkdir -p "$OLLAMA_MODELS"
     mkdir -p "${HOME}/.config/ollama"
-    
+
     cat > "${HOME}/.config/ollama/env" << 'ENVFILE'
 # Ollama environment settings for Windows/WSL2
 export OLLAMA_HOST="127.0.0.1:11434"
@@ -148,14 +150,14 @@ export OLLAMA_MODELS="$HOME/.ollama/models"
 export OLLAMA_NUM_PARALLEL="2"
 export OLLAMA_MAX_LOADED_MODELS="2"
 ENVFILE
-    
+
     log_success "Environment file created at ~/.config/ollama/env"
 }
 
 # ── install ──────────────────────────────────────────────────────────────────
 cmd_install() {
     log_info "Starting Ollama installation for Windows/WSL2..."
-    
+
     # Check Docker Desktop availability
     if ! check_docker_available; then
         log_error "Docker Desktop is not available or not running"
@@ -168,27 +170,27 @@ cmd_install() {
         echo "After installation, run this script again."
         return 1
     fi
-    
+
     log_success "Docker Desktop is available"
-    
+
     # Check for existing installation
     if check_ollama_installed; then
         log_warn "Ollama container already exists: ${DOCKER_CONTAINER}"
         log_info "Use 'uninstall' first if you want to reinstall"
         return 1
     fi
-    
+
     setup_environment
-    
+
     # Check GPU capability
     local gpu_available=false
     local nvidia_runtime=false
-    
+
     if check_nvidia_gpu; then
         log_success "NVIDIA GPU detected"
         log_info "GPU Info:"
         nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>/dev/null | head -1 | sed 's/^/  /'
-        
+
         if check_nvidia_docker_runtime; then
             log_success "NVIDIA Container Toolkit is configured"
             nvidia_runtime=true
@@ -214,15 +216,15 @@ cmd_install() {
         echo "  - WSL2 with Docker Desktop"
         echo ""
     fi
-    
+
     # Pull the Ollama image
     log_info "Pulling Ollama image: ${OLLAMA_IMAGE}"
     log_info "This may take several minutes..."
     docker pull "$OLLAMA_IMAGE"
-    
+
     # Create and start the container
     log_info "Creating Ollama container..."
-    
+
     if [ "$nvidia_runtime" = true ]; then
         log_info "Creating container with GPU support..."
         docker run -d \
@@ -247,16 +249,16 @@ cmd_install() {
             -e "OLLAMA_MAX_LOADED_MODELS=1" \
             "$OLLAMA_IMAGE"
     fi
-    
+
     log_success "Container created and started!"
     log_info "Container name: ${DOCKER_CONTAINER}"
     log_info "API endpoint: http://127.0.0.1:11434"
-    
+
     sleep 3
-    
+
     if check_is_running; then
         log_success "Ollama is running!"
-        
+
         # Pull recommended model based on GPU availability
         local default_model="phi3"
         if [ "$gpu_available" = true ]; then
@@ -274,7 +276,7 @@ cmd_install() {
             done
             printf "\n"
         fi
-        
+
         log_success "Installation complete!"
         echo ""
         echo "Quick start:"
@@ -309,7 +311,7 @@ cmd_install() {
 # ── uninstall ─────────────────────────────────────────────────────────────────
 cmd_uninstall() {
     log_info "Uninstalling Ollama..."
-    
+
     if ! check_docker_available; then
         log_warn "Docker is not available - cannot remove container"
     else
@@ -322,10 +324,10 @@ cmd_uninstall() {
             log_info "Container not found"
         fi
     fi
-    
+
     log_warn "Models directory preserved at: $OLLAMA_MODELS"
     log_warn "To remove models, run: rm -rf ~/.ollama"
-    
+
     log_success "Ollama uninstalled successfully"
 }
 
@@ -335,15 +337,15 @@ cmd_start() {
         log_error "Docker Desktop is not available"
         return 1
     fi
-    
+
     if ! check_ollama_installed; then
         log_error "Ollama is not installed. Run 'install' first"
         return 1
     fi
-    
+
     log_info "Starting Ollama container..."
     docker start "$DOCKER_CONTAINER"
-    
+
     sleep 2
     if check_is_running; then
         log_success "Ollama container started"
@@ -359,15 +361,15 @@ cmd_stop() {
         log_error "Docker Desktop is not available"
         return 1
     fi
-    
+
     if ! check_ollama_installed; then
         log_warn "Ollama is not installed"
         return 0
     fi
-    
+
     log_info "Stopping Ollama container..."
     docker stop "$DOCKER_CONTAINER"
-    
+
     if ! check_is_running; then
         log_success "Ollama container stopped"
     else
@@ -385,7 +387,7 @@ cmd_status() {
     else
         echo "Docker Desktop: Not available"
     fi
-    
+
     echo ""
     printf "${BLUE}=== NVIDIA GPU Status ===${NC}\n"
     if check_nvidia_gpu; then
@@ -402,13 +404,13 @@ cmd_status() {
         echo "GPU: Not detected"
         echo "Mode: CPU-only"
     fi
-    
+
     echo ""
     printf "${BLUE}=== Ollama Container ===${NC}\n"
     if check_ollama_installed; then
         echo "Container: ${DOCKER_CONTAINER}"
         docker ps -a --filter "name=${DOCKER_CONTAINER}" --format "Status: {{.Status}}" 2>/dev/null || echo "Status: Unknown"
-        
+
         if check_is_running; then
             echo "State: Running"
         else
@@ -417,7 +419,7 @@ cmd_status() {
     else
         echo "Container: Not installed"
     fi
-    
+
     echo ""
     printf "${BLUE}=== Ollama Version ===${NC}\n"
     if check_is_running; then
@@ -425,7 +427,7 @@ cmd_status() {
     else
         echo "Container not running"
     fi
-    
+
     echo ""
     printf "${BLUE}=== Installed Models ===${NC}\n"
     if check_is_running; then
@@ -433,7 +435,7 @@ cmd_status() {
     else
         echo "Container not running"
     fi
-    
+
     echo ""
     printf "${BLUE}=== Configuration ===${NC}\n"
     printf "OLLAMA_HOST: %s\n" "${OLLAMA_HOST}"
@@ -447,12 +449,12 @@ cmd_models() {
         log_warn "Docker Desktop is not available"
         return 1
     fi
-    
+
     if ! check_is_running; then
         log_warn "Ollama container is not running"
         return 1
     fi
-    
+
     docker exec "$DOCKER_CONTAINER" ollama list
 }
 
@@ -464,22 +466,22 @@ cmd_pull() {
         cmd_recommend
         return 1
     fi
-    
+
     local model="$1"
-    
+
     if ! check_docker_available; then
         log_error "Docker Desktop is not available"
         return 1
     fi
-    
+
     if ! check_is_running; then
         log_error "Ollama container is not running. Start it first:"
         echo "  devtools-windows-llm start"
         return 1
     fi
-    
+
     log_info "Pulling model: $model"
-    
+
     if docker exec "$DOCKER_CONTAINER" ollama pull "$model"; then
         log_success "Model '$model' pulled successfully"
     else
@@ -497,7 +499,7 @@ cmd_gpu_info() {
         echo "WSL Kernel:"
         grep -o 'WSL[0-9]*' /proc/version 2>/dev/null || echo "Unknown"
     fi
-    
+
     echo ""
     printf "${BLUE}=== NVIDIA GPU Information ===${NC}\n"
     if check_nvidia_gpu; then
@@ -512,7 +514,7 @@ cmd_gpu_info() {
         echo "Memory Information:"
         nvidia-smi --query-gpu=name,memory.total,memory.free --format=csv 2>/dev/null | sed 's/^/  /'
         echo ""
-        
+
         if check_nvidia_docker_runtime; then
             printf "${GREEN}NVIDIA Container Toolkit: Configured${NC}\n"
             echo "GPU passthrough to Docker containers is available"
@@ -545,13 +547,13 @@ cmd_recommend() {
     echo ""
     printf "${BLUE}=== Recommended Models for Windows/WSL2 ===${NC}\n"
     echo ""
-    
+
     # Check if GPU is available for tiered recommendations
     local has_gpu=false
     if check_nvidia_gpu && check_nvidia_docker_runtime; then
         has_gpu=true
     fi
-    
+
     if [ "$has_gpu" = true ]; then
         printf "${GREEN}GPU Mode - Best Performance:${NC}\n"
         echo "  llama3.2:3b       - Optimal balance (3B params)"
@@ -586,7 +588,7 @@ cmd_recommend() {
         echo "  gemma2:2b         - Google's small model (2B)"
         echo "  tinyllama         - Ultra-fast inference"
     fi
-    
+
     echo ""
     printf "${BLUE}=== Performance Tips ===${NC}\n"
     if [ "$has_gpu" = true ]; then
@@ -614,12 +616,12 @@ cmd_logs() {
         log_error "Docker Desktop is not available"
         return 1
     fi
-    
+
     if ! check_ollama_installed; then
         log_error "Ollama is not installed"
         return 1
     fi
-    
+
     log_info "Showing container logs..."
     docker logs --tail 50 -f "$DOCKER_CONTAINER"
 }
@@ -635,34 +637,34 @@ cmd_opencode_config() {
         echo ""
         printf "${BLUE}=== Opencode Configuration Status ===${NC}\n"
         echo ""
-        
+
         if [ ! -f "$config_file" ]; then
             printf "  ${RED}✗ Opencode not installed${NC}\n"
             printf "  Config file not found: %s\n" "$config_file"
             return 1
         fi
-        
+
         printf "  ${GREEN}✓ Opencode config found${NC}\n"
         printf "  Location: %s\n" "$config_file"
         echo ""
-        
+
         # Try to extract current model using sed/grep
         local current_model
         current_model=$(grep -E '"model"\s*:' "$config_file" 2>/dev/null | head -1 | sed 's/.*"model"\s*:\s*"\([^"]*\)".*/\1/')
         printf "  Current model: %s\n" "${current_model:-unknown}"
-        
+
         local current_small
         current_small=$(grep -E '"small_model"\s*:' "$config_file" 2>/dev/null | head -1 | sed 's/.*"small_model"\s*:\s*"\([^"]*\)".*/\1/')
         printf "  Small model: %s\n" "${current_small:-unknown}"
         echo ""
-        
+
         # Check if using Ollama
         if echo "$current_model" | grep -q "^ollama/"; then
             printf "  ${GREEN}✓ Using Ollama provider${NC}\n"
         else
             printf "  ${YELLOW}⚠ Not using Ollama provider${NC}\n"
         fi
-        
+
         # Check Ollama status
         echo ""
         printf "${BLUE}=== Ollama Status ===${NC}\n"
@@ -671,7 +673,7 @@ cmd_opencode_config() {
         else
             printf "  ${RED}✗ Ollama container not running${NC}\n"
         fi
-        
+
         return 0
     fi
 
@@ -732,7 +734,7 @@ cmd_opencode_config() {
 
     # 5. Update the config file
     log_info "Updating configuration..."
-    
+
     # Use sed to replace model fields
     sed -i.bak "s/\"model\":\s*\"[^\"]*\"/\"model\": \"ollama\/$model\"/" "$config_file"
     sed -i "s/\"small_model\":\s*\"[^\"]*\"/\"small_model\": \"ollama\/$model\"/" "$config_file"
@@ -776,7 +778,7 @@ cmd_verify_gpu() {
     echo ""
     printf "${BLUE}=== GPU Acceleration Verification ===${NC}\n"
     echo ""
-    
+
     # Check Docker
     printf "${GREEN}Docker Status:${NC}\n"
     if check_docker_available; then
@@ -786,7 +788,7 @@ cmd_verify_gpu() {
         echo "  Docker Desktop: Not available"
         return 1
     fi
-    
+
     # Check NVIDIA GPU
     printf "\n${GREEN}NVIDIA GPU:${NC}\n"
     if check_nvidia_gpu; then
@@ -796,7 +798,7 @@ cmd_verify_gpu() {
         echo "  GPU: Not detected"
         echo "  Mode: CPU-only"
     fi
-    
+
     # Check NVIDIA Container Runtime
     printf "\n${GREEN}NVIDIA Container Runtime:${NC}\n"
     if check_nvidia_docker_runtime; then
@@ -806,7 +808,7 @@ cmd_verify_gpu() {
         echo "  Status: Not configured"
         echo "  GPU passthrough: Not available"
     fi
-    
+
     # Test GPU inference
     printf "\n${GREEN}Ollama GPU Test:${NC}\n"
     if ! check_is_running; then
@@ -814,9 +816,9 @@ cmd_verify_gpu() {
         echo "  Start it with: devtools-windows-llm start"
         return 1
     fi
-    
+
     echo "  Testing GPU inference..."
-    
+
     # Check if phi3 or llama3.2:3b is available
     local test_model=""
     if docker exec "$DOCKER_CONTAINER" ollama list 2>/dev/null | grep -q "phi3"; then
@@ -824,16 +826,16 @@ cmd_verify_gpu() {
     elif docker exec "$DOCKER_CONTAINER" ollama list 2>/dev/null | grep -q "llama3.2"; then
         test_model="llama3.2:3b"
     fi
-    
+
     if [ -n "$test_model" ]; then
         echo "  Using model: $test_model"
         local test_output
         test_output=$(docker exec "$DOCKER_CONTAINER" ollama run "$test_model" "Say 'GPU test complete'" 2>&1) || true
-        
+
         if echo "$test_output" | grep -qi "complete\|gpu\|cuda"; then
             printf "  ${GREEN}✓ Inference test completed${NC}\n"
         fi
-        
+
         # Show container logs for GPU info
         echo ""
         echo "  Container GPU info from logs:"
@@ -842,7 +844,7 @@ cmd_verify_gpu() {
         echo "  No test model available. Pull a model first:"
         echo "    devtools-windows-llm pull phi3"
     fi
-    
+
     printf "\n${BLUE}=== Summary ===${NC}\n"
     if check_nvidia_docker_runtime; then
         printf "  ${GREEN}✓ GPU acceleration is available${NC}\n"
@@ -857,7 +859,7 @@ main() {
         usage
         exit 1
     fi
-    
+
     case "$1" in
         install)
             cmd_install

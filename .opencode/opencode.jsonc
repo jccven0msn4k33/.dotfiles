@@ -2,12 +2,13 @@
   "$schema": "https://opencode.ai/config.json",
   "instructions": [],
   "default_agent": "dotfiles-orchestrator",
-  "model": "ollama/llama3.2:latest",
+  "model": "opencode/kimi-k2.5",
   "plugin": [
     "opencode-redactor@0.1.1",
     "envsitter-guard@latest"
   ],
   "provider": {
+    "github-copilot": {},
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Ollama",

@@ -229,7 +229,6 @@ cmd_install() {
         log_info "Creating container with GPU support..."
         docker run -d \
             --name "$DOCKER_CONTAINER" \
-            --replace \
             --gpus all \
             -p 127.0.0.1:11434:11434 \
             -v "$OLLAMA_HOME:/root/.ollama" \
@@ -241,7 +240,6 @@ cmd_install() {
         log_info "Creating container in CPU mode..."
         docker run -d \
             --name "$DOCKER_CONTAINER" \
-            --replace \
             -p 127.0.0.1:11434:11434 \
             -v "$OLLAMA_HOME:/root/.ollama" \
             -e "OLLAMA_HOST=0.0.0.0:11434" \

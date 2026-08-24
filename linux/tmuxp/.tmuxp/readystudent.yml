@@ -1,0 +1,12 @@
+session_name: readystudent
+windows:
+  - name: readystudent
+    layout: tiled
+    shell_command_before:
+      - cd ~/Projects/Education
+      - clear
+    panes:
+      - cd plus-ready-curriculum/frontend
+      - cd plus-ready-curriculum/backend 
+      - cd RTO
+      - brew update
